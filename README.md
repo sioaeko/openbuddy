@@ -4,6 +4,12 @@ Tamagotchi-style ASCII buddies for your CLI coding tools.
 
 anygochi injects a cute ASCII companion into your CLI workflow. It supports session tracking, creature evolution, and integration with the Gemini CLI.
 
+## Screenshots
+
+| Gemini CLI (Ink panel embedded) | Codex CLI (separate buddy window) |
+|:---:|:---:|
+| ![Gemini CLI](docs/images/win-gemini.png) | ![Codex CLI](docs/images/win-codex.png) |
+
 ## Features
 
 - **6 Unique Creatures:** debugrix, velocode, refactoron, nullbyte, wizardex, and compilox.
