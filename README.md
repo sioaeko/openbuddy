@@ -21,16 +21,21 @@ openbuddy injects a cute ASCII companion into your CLI workflow. It supports ses
 ## Features
 
 - **6 Unique Creatures:** debugrix, velocode, refactoron, nullbyte, wizardex, and compilox.
-- **Evolution System:** Egg -> Baby -> Adult -> Elder based on session counts.
+- **Tokscale Integration:** Evolution is now driven by your **actual AI token usage** (Input + Output) tracked via [tokscale](https://github.com/sioaeko/tokscale).
+- **Evolution System (Mania Thresholds):** 
+  - **Egg:** 0
+  - **Baby:** 10M tokens
+  - **Adult:** 50M tokens
+  - **Elder:** 100M tokens
 - **CLI Integration:** Built-in support for wrapping tools like `codex`, `gemini`, and `opencode`.
-- **Gemini CLI Buddy Panel:** A custom Ink component for Gemini CLI users.
+- **Gemini CLI Buddy Panel:** A custom Ink component for Gemini CLI users, now showing real-time token progress.
 - **Robust Launcher:** Automated `stdin` flush and TTY stabilization to prevent input ghosting.
 - **Dynamic Layout:** Responsive buddy panel that scales or hides based on terminal width.
 - **Cross-platform:** Works on Linux, macOS, and Windows (Git Bash).
 
 ## Components
 
-- `bin/openbuddy`: Main Python application for managing your buddy.
+- `bin/openbuddy`: Main Python application for managing your buddy (now integrates with `tokscale`).
 - `bin/openbuddy-wrap`: Tool to wrap other CLI commands with openbuddy.
 - `bin/openbuddy-launcher`: Robust execution wrapper with error capture and TTY stabilization.
 - `share/BuddyPanel.js`: Custom Ink component for Gemini CLI.
@@ -80,13 +85,21 @@ On Windows, this also generates `.cmd` wrappers so that PowerShell and cmd.exe p
 ## Usage
 
 ```bash
-openbuddy show            # Show your buddy
-openbuddy session [tool]  # Increment session count
-openbuddy watch           # Live refresh mode (e.g., for tmux panes)
-openbuddy info            # Show brief buddy info
+openbuddy show            # Show your buddy and current token usage
+openbuddy session [tool]  # Increment session count and sync tokens from tokscale
+openbuddy watch           # Live refresh mode (syncs tokens every 2 mins)
+openbuddy info            # Show brief buddy info (including total tokens)
 openbuddy list            # List all creature types
 openbuddy reset           # Start over with a new egg
 ```
+
+## How Evolution Works
+
+Previously, openbuddy evolved based on the number of CLI sessions. Now, it connects to your local `tokscale` installation to feed on your real AI workload.
+
+1.  **Syncing:** Every time you run `openbuddy session` or a wrapped tool, it runs `tokscale --json` to fetch your cumulative usage.
+2.  **Feeding:** Your buddy grows as you spend tokens on LLMs. The more you code, the faster they evolve.
+3.  **Thresholds:** To reach **Elder** status, you must reach the **Mania** level of 100 million tokens.
 
 ## Platform Differences
 
@@ -116,6 +129,7 @@ bash share/openbuddy-unpatch.sh
 ## Requirements
 
 - Python 3.8+
+- [tokscale](https://github.com/sioaeko/tokscale) (required for token-based evolution)
 - `rich` (optional, for colored output): `pip install rich`
 - `tmux` (optional, Linux/macOS, for split-pane buddy display within the same terminal)
 
