@@ -113,6 +113,12 @@ bash share/openbuddy-unpatch.sh
 
 > **Windows note:** Since tmux is not available on Windows, the buddy opens in a separate popup window instead of a split pane. No additional dependencies are required — the wrapper uses PowerShell's `Start-Process` to launch the buddy window.
 
+## Notice
+
+This project is built from scratch, inspired only by the **concept** of ASCII companions in CLI tools (such as Claude Code). It **does not** use, reference, or contain any leaked code or internal assets. All logic, ASCII art, and integration scripts are original implementations.
+
+본 프로젝트는 클로드 코드(Claude Code) 등 CLI 도구의 ASCII 컴패니언 컨셉만을 참고하여 밑바닥부터(from scratch) 직접 구현한 결과물입니다. 유출된 코드나 내부 자산을 기반으로 하지 않았으며, 모든 로직과 ASCII 아트는 독자적으로 제작되었습니다.
+
 ## License
 
 MIT
