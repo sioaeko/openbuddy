@@ -6,16 +6,12 @@
 #   openbuddy-wrap <toolname> /path    # wrap a specific binary
 #   openbuddy-wrap --list              # list currently wrapped tools
 #   openbuddy-wrap --remove <toolname> # remove a wrapper
-#
-# Example:
-#   openbuddy-wrap codex
-#   openbuddy-wrap aider
-#   openbuddy-wrap gh
 
 set -euo pipefail
 
 LOCAL_BIN="$HOME/.local/bin"
 OPENBUDDY="$LOCAL_BIN/openbuddy"
+LAUNCHER="$LOCAL_BIN/openbuddy-launcher"
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -24,12 +20,11 @@ info() { echo "  $*"; }
 
 require_openbuddy() {
     [[ -x "$OPENBUDDY" ]] || die "openbuddy not found at $OPENBUDDY"
+    [[ -x "$LAUNCHER" ]] || die "launcher not found at $LAUNCHER"
 }
 
-# Find the real binary for a tool name, skipping wrappers in LOCAL_BIN
 find_real_binary() {
     local tool="$1"
-    # Walk PATH entries; skip our own LOCAL_BIN wrapper if present
     while IFS= read -r -d ':' dir; do
         [[ -z "$dir" ]] && continue
         local candidate="$dir/$tool"
@@ -49,7 +44,6 @@ do_wrap() {
 
     require_openbuddy
 
-    # Resolve real binary
     if [[ -z "$real_bin" ]]; then
         real_bin="$(find_real_binary "$tool")" \
             || die "could not find '$tool' in PATH (excluding $LOCAL_BIN)"
@@ -59,13 +53,10 @@ do_wrap() {
 
     local wrapper="$LOCAL_BIN/$tool"
 
-    # Safety: don't wrap openbuddy itself or openbuddy-wrap
-    [[ "$tool" == "openbuddy" || "$tool" == "openbuddy-wrap" ]] \
-        && die "cannot wrap openbuddy itself"
+    [[ "$tool" == "openbuddy" || "$tool" == "openbuddy-wrap" || "$tool" == "openbuddy-launcher" ]] \
+        && die "cannot wrap openbuddy internals"
 
-    # Warn if already wrapped
     if [[ -f "$wrapper" ]]; then
-        # Check if it's one of ours
         if head -3 "$wrapper" 2>/dev/null | grep -q "^# openbuddy wrapper for:"; then
             echo "  '$tool' is already wrapped. Overwriting..."
         else
@@ -84,64 +75,34 @@ do_wrap() {
 set -euo pipefail
 
 OPENBUDDY_BIN="$OPENBUDDY"
+LAUNCHER_BIN="$LAUNCHER"
 REAL_BIN="$real_bin"
-
-# Ultra-aggressive TTY flusher
-_flush_stdin() {
-    # 1. Disable echo during flush to prevent terminal feedback loops
-    stty -echo 2>/dev/null || true
-    # 2. Disable terminal features that send escape codes (focus gain/loss, bracketed paste)
-    printf '\e[?1004l\e[?2004l' 2>/dev/null || true
-    # 3. Wait for all startup events to arrive
-    sleep 0.8
-    # 4. Use python for raw kernel TTY buffer flush
-    python3 -c 'import sys, termios; termios.tcflush(sys.stdin, termios.TCIFLUSH)' 2>/dev/null || true
-    # 5. Final drain of anything that arrived in the last ms
-    while read -r -t 0.1 -n 10000 _trash; do :; done 2>/dev/null || true
-    # 6. Restore echo
-    stty echo 2>/dev/null || true
-}
 
 if [[ -x "\$OPENBUDDY_BIN" && -z "\${OPENBUDDY_WRAPPED:-}" ]]; then
     export OPENBUDDY_WRAPPED=1
 
-    # Calculate pane widths
     _cols="\$(tput cols 2>/dev/null || echo 80)"
     _lines="\$(tput lines 2>/dev/null || echo 24)"
     _main=\$(( _cols - 31 ))
     [[ \$_main -lt 40 ]] && _main=\$_cols
 
     if [[ -n "\${TMUX:-}" ]]; then
-        # Already in tmux: split window for buddy
         "\$OPENBUDDY_BIN" session "$tool" --silent 2>/dev/null || true
         if [[ \$_main -lt \$_cols ]]; then
-            # Split with -d to keep focus on tool, but terminal still sends events
             tmux split-window -h -b -d -l 31 "\$OPENBUDDY_BIN watch"
         fi
-        
-        _flush_stdin
-        exec "\$REAL_BIN" "\$@"
+        exec "\$LAUNCHER_BIN" "$tool" "\$REAL_BIN" "\$@"
 
     elif command -v tmux &>/dev/null; then
-        # Not in tmux: build layout in detached session
         "\$OPENBUDDY_BIN" session "$tool" --silent 2>/dev/null || true
         _sess="openbuddy-\$\$"
-        
         tmux new-session -d -s "\$_sess" -x "\$_cols" -y "\$_lines" "\$OPENBUDDY_BIN watch"
-        tmux split-window -h -b -l "\$_main" -t "\$_sess" \\
-            "export OPENBUDDY_WRAPPED=1; \\
-             _flush_stdin() { \\
-               stty -echo 2>/dev/null || true; printf '\e[?1004l\e[?2004l'; sleep 1.0; \\
-               python3 -c 'import sys, termios; termios.tcflush(sys.stdin, termios.TCIFLUSH)' 2>/dev/null || true; \\
-               while read -r -t 0.1 -n 10000 _trash; do :; done 2>/dev/null || true; \\
-               stty echo 2>/dev/null || true; \\
-             }; \\
-             _flush_stdin; \\
-             \$REAL_BIN \$(printf '%q ' \"\$@\"); echo; \$OPENBUDDY_BIN show; read -rsp '[press enter to close]'"
+        # We use a simple command string here to call the launcher
+        tmux split-window -h -b -l "\$_main" -t "\$_sess" \
+            "export OPENBUDDY_WRAPPED=1; \$LAUNCHER_BIN $tool \$REAL_BIN \$(printf '%q ' \"\$@\"); echo; \$OPENBUDDY_BIN show; read -rsp '[press enter to close]'"
         exec tmux attach-session -t "\$_sess"
 
     else
-        # No tmux: regular execution
         "\$OPENBUDDY_BIN" session "$tool" --silent 2>/dev/null || true
         "\$REAL_BIN" "\$@"
         _exit=\$?
@@ -155,7 +116,6 @@ WRAPPER
 
     chmod +x "$wrapper"
 
-    # On Windows (MSYS/Git Bash), also generate a .cmd wrapper
     if [[ "$(uname -s)" == MINGW* || "$(uname -s)" == MSYS* ]]; then
         local win_wrapper="$LOCAL_BIN/$tool.cmd"
         local python_exe
@@ -198,19 +158,12 @@ CMDWRAPPER
     fi
 
     echo "  ✓ Wrapped '$tool'"
-    echo "    wrapper : $wrapper"
-    echo "    real    : $real_bin"
-    echo ""
-    echo "  Run 'openbuddy session $tool' is called automatically on each launch."
-    echo "  Your buddy is at: $OPENBUDDY"
 }
 
 do_remove() {
     local tool="$1"
     local wrapper="$LOCAL_BIN/$tool"
     [[ -f "$wrapper" ]] || die "no wrapper found at $wrapper"
-    head -3 "$wrapper" 2>/dev/null | grep -q "^# openbuddy wrapper for:" \
-        || die "'$wrapper' doesn't look like an openbuddy wrapper"
     rm "$wrapper"
     [[ -f "$wrapper.cmd" ]] && rm "$wrapper.cmd"
     echo "  ✓ Removed wrapper for '$tool'"
@@ -229,40 +182,27 @@ do_list() {
             tool="$(basename "$f")"
             local real
             real="$(grep "^# real binary:" "$f" | cut -d: -f2- | xargs)"
-            local suffix=""
-            [[ -f "$f.cmd" ]] && suffix=" (+.cmd)"
-            printf "    %-16s → %s%s\n" "$tool" "${real:-unknown}" "$suffix"
+            printf "    %-16s → %s\n" "$tool" "${real:-unknown}"
             found=1
         fi
     done
-    [[ $found -eq 0 ]] && echo "    (none yet — run: openbuddy-wrap <toolname>)"
+    [[ $found -eq 0 ]] && echo "    (none yet)"
     echo ""
 }
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
-USAGE="Usage: openbuddy-wrap <toolname> [/path/to/real/binary]
-       openbuddy-wrap --list
-       openbuddy-wrap --remove <toolname>
-
-Examples:
-  openbuddy-wrap codex
-  openbuddy-wrap aider
-  openbuddy-wrap gh /usr/bin/gh
-  openbuddy-wrap --list
-  openbuddy-wrap --remove aider
-"
-
 case "${1:-}" in
     ""|"-h"|"--help"|"help")
-        echo "$USAGE" ;;
+        echo "Usage: openbuddy-wrap <toolname> [path]"
+        echo "       openbuddy-wrap --list"
+        echo "       openbuddy-wrap --remove <toolname>"
+        ;;
     "--list"|"list")
         do_list ;;
     "--remove"|"remove")
         [[ -n "${2:-}" ]] || die "specify a tool name to remove"
         do_remove "$2" ;;
-    -*)
-        die "unknown option: $1" ;;
     *)
         do_wrap "$1" "${2:-}" ;;
 esac

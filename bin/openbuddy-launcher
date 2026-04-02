@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# openbuddy-launcher: Executes a tool with TTY flushing and buddy integration.
+
+set -euo pipefail
+
+TOOL_NAME="$1"
+REAL_BIN="$2"
+shift 2
+
+# AGGRESSIVE TTY FLUSH
+# This is designed to kill the "auto-submitted empty input" bug.
+_flush_stdin() {
+    # 1. Disable echo and terminal sequences
+    stty -echo 2>/dev/null || true
+    printf '\e[?1004l\e[?2004l' 2>/dev/null || true
+    
+    # 2. Wait for all startup/focus events to arrive (crucial for slow terminal emulators)
+    sleep 1.0
+    
+    # 3. Flush the kernel TTY buffer via Python (most reliable method)
+    python3 -c 'import sys, termios; termios.tcflush(sys.stdin, termios.TCIFLUSH)' 2>/dev/null || true
+    
+    # 4. Drain any remaining bytes (final safety check)
+    while read -r -t 0.1 -n 10000 _trash; do :; done 2>/dev/null || true
+    
+    # 5. Restore echo before execution
+    stty echo 2>/dev/null || true
+}
+
+# Run flush
+_flush_stdin
+
+# Execute the real tool with its arguments
+# We use 'exec' to replace the launcher process
+exec "$REAL_BIN" "$@"
