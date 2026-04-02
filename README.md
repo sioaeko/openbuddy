@@ -1,8 +1,8 @@
-# anybuddy
+# openbuddy
 
 Tamagotchi-style ASCII buddies for your CLI coding tools.
 
-anygochi injects a cute ASCII companion into your CLI workflow. It supports session tracking, creature evolution, and integration with the Gemini CLI.
+openbuddy injects a cute ASCII companion into your CLI workflow. It supports session tracking, creature evolution, and integration with the Gemini CLI.
 
 ## Screenshots
 
@@ -20,32 +20,32 @@ anygochi injects a cute ASCII companion into your CLI workflow. It supports sess
 
 ## Components
 
-- `bin/anygochi`: Main Python application for managing your buddy.
-- `bin/anygochi-wrap`: Tool to wrap other CLI commands with anygochi.
+- `bin/openbuddy`: Main Python application for managing your buddy.
+- `bin/openbuddy-wrap`: Tool to wrap other CLI commands with openbuddy.
 - `share/BuddyPanel.js`: Custom Ink component for Gemini CLI.
-- `share/gemini-patch.sh`: Script to patch Gemini CLI with the anygochi buddy panel.
+- `share/gemini-patch.sh`: Script to patch Gemini CLI with the openbuddy buddy panel.
 
 ## Installation
 
 ### Linux / macOS
 
 ```bash
-git clone https://github.com/sioaeko/anygochi.git
-cd anygochi
-ln -s $(pwd)/bin/anygochi ~/.local/bin/anygochi
-ln -s $(pwd)/bin/anygochi-wrap ~/.local/bin/anygochi-wrap
-cp share/* ~/.local/share/anygochi/
+git clone https://github.com/sioaeko/openbuddy.git
+cd openbuddy
+ln -s $(pwd)/bin/openbuddy ~/.local/bin/openbuddy
+ln -s $(pwd)/bin/openbuddy-wrap ~/.local/bin/openbuddy-wrap
+cp share/* ~/.local/share/openbuddy/
 ```
 
 ### Windows (Git Bash)
 
 ```bash
-git clone https://github.com/sioaeko/anygochi.git
-cd anygochi
-mkdir -p ~/.local/bin ~/.local/share/anygochi
-cp bin/anygochi ~/.local/bin/
-cp bin/anygochi-wrap ~/.local/bin/
-cp share/* ~/.local/share/anygochi/
+git clone https://github.com/sioaeko/openbuddy.git
+cd openbuddy
+mkdir -p ~/.local/bin ~/.local/share/openbuddy
+cp bin/openbuddy ~/.local/bin/
+cp bin/openbuddy-wrap ~/.local/bin/
+cp share/* ~/.local/share/openbuddy/
 ```
 
 Make sure `~/.local/bin` is in your PATH (it should be before npm's path for wrappers to work).
@@ -53,14 +53,14 @@ Make sure `~/.local/bin` is in your PATH (it should be before npm's path for wra
 ### Initialize
 
 ```bash
-anygochi show
+openbuddy show
 ```
 
 ### Wrap a tool
 
 ```bash
-anygochi-wrap codex
-anygochi-wrap gemini
+openbuddy-wrap codex
+openbuddy-wrap gemini
 ```
 
 On Windows, this also generates `.cmd` wrappers so that PowerShell and cmd.exe pick them up.
@@ -68,12 +68,12 @@ On Windows, this also generates `.cmd` wrappers so that PowerShell and cmd.exe p
 ## Usage
 
 ```bash
-anygochi show            # Show your buddy
-anygochi session [tool]  # Increment session count
-anygochi watch           # Live refresh mode (e.g., for tmux panes)
-anygochi info            # Show brief buddy info
-anygochi list            # List all creature types
-anygochi reset           # Start over with a new egg
+openbuddy show            # Show your buddy
+openbuddy session [tool]  # Increment session count
+openbuddy watch           # Live refresh mode (e.g., for tmux panes)
+openbuddy info            # Show brief buddy info
+openbuddy list            # List all creature types
+openbuddy reset           # Start over with a new egg
 ```
 
 ## Platform Differences
@@ -87,7 +87,7 @@ On Linux/macOS with tmux, the buddy appears as a split pane within your terminal
 
 ## Gemini CLI Integration
 
-To add anygochi to your Gemini CLI:
+To add openbuddy to your Gemini CLI:
 ```bash
 # Linux (global npm install)
 sudo bash share/gemini-patch.sh

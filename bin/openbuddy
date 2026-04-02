@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-anygochi: A Tamagotchi-like companion for any CLI coding tool.
-State stored in ~/.config/anygochi/state.json
+openbuddy: A Tamagotchi-like companion for any CLI coding tool.
+State stored in ~/.config/openbuddy/state.json
 """
 
 import json
@@ -27,12 +27,13 @@ try:
 except ImportError:
     HAS_RICH = False
 
-STATE_DIR  = Path.home() / ".config" / "anygochi"
+STATE_DIR  = Path.home() / ".config" / "openbuddy"
 STATE_FILE = STATE_DIR / "state.json"
 
 # Legacy migration paths
 LEGACY_PATHS = [
     Path.home() / ".codex" / "buddy.json",
+    Path.home() / ".config" / "anygochi" / "state.json",
 ]
 
 # ── Creature definitions ──────────────────────────────────────────────────────
@@ -298,7 +299,7 @@ def pick_creature() -> str:
     return random.choice(pool)
 
 def migrate_legacy() -> dict | None:
-    """Check for old codex-buddy state and migrate it."""
+    """Check for old buddy state and migrate it."""
     for legacy_path in LEGACY_PATHS:
         if legacy_path.exists():
             try:
@@ -308,12 +309,13 @@ def migrate_legacy() -> dict | None:
                 state = {
                     "creature":      old.get("creature", pick_creature()),
                     "sessions":      old.get("sessions", 0),
-                    "tool_sessions": {"codex": old.get("sessions", 0)},
+                    "tool_sessions": old.get("tool_sessions", {"legacy": old.get("sessions", 0)}),
                     "created_at":    old.get("created_at", datetime.now().isoformat()),
                     "last_session":  old.get("last_session"),
                     "hatched":       old.get("hatched", False),
                 }
                 save_state(state)
+                # Keep backup but rename so it's not processed again
                 legacy_path.rename(legacy_path.with_suffix(".json.bak"))
                 return state
             except Exception:
@@ -389,7 +391,7 @@ def render_rich(state: dict, message: str = None):
         if message:
             content.append(f'\n  💬 "{message}"', style="italic white")
         console.print(Panel(content,
-            title="[bold white]✦ ANYGOCHI ✦[/]",
+            title="[bold white]✦ OPENBUDDY ✦[/]",
             border_style="white", width=38, padding=(0, 1)))
         return
 
@@ -427,7 +429,7 @@ def render_rich(state: dict, message: str = None):
         content.append(f'\n  💬 "{message}"',    style=f"italic {color}")
 
     console.print(Panel(content,
-        title=f"[bold {color}]✦ ANYGOCHI ✦[/]",
+        title=f"[bold {color}]✦ OPENBUDDY ✦[/]",
         border_style=color, width=38, padding=(0, 1)))
 
 def render_plain(state: dict, message: str = None):
@@ -435,7 +437,7 @@ def render_plain(state: dict, message: str = None):
     stage    = get_stage(sessions)
     is_egg   = not state.get("hatched", False)
     print("=" * 38)
-    print("  ✦ ANYGOCHI ✦")
+    print("  ✦ OPENBUDDY ✦")
     print("=" * 38)
     if is_egg:
         print(f"  Stage: EGG  ({sessions}/{EGG_HATCH_AT} sessions)")
@@ -532,7 +534,7 @@ def get_quote(state: dict, working: bool = False) -> str:
 # ── Commands ──────────────────────────────────────────────────────────────────
 
 def cmd_session(state: dict, tool: str = "unknown", silent: bool = False):
-    """Increment session. silent=True suppresses regular panel (animations still show)."""
+    """Increment session. silent=True suppresses regular panel and animations."""
     old_stage = get_stage(state["sessions"])
     state["sessions"] += 1
     state["tool_sessions"][tool] = state["tool_sessions"].get(tool, 0) + 1
@@ -540,15 +542,20 @@ def cmd_session(state: dict, tool: str = "unknown", silent: bool = False):
     new_stage = get_stage(state["sessions"])
     save_state(state)
 
-    if not state.get("hatched") and state["sessions"] >= EGG_HATCH_AT:
-        state["hatched"] = True
-        save_state(state)
-        hatch_animation(state)
-    elif state.get("hatched") and old_stage != new_stage:
-        evolve_animation(state, new_stage)
-
     if not silent:
+        if not state.get("hatched") and state["sessions"] >= EGG_HATCH_AT:
+            state["hatched"] = True
+            save_state(state)
+            hatch_animation(state)
+        elif state.get("hatched") and old_stage != new_stage:
+            evolve_animation(state, new_stage)
+        
         render(state, message=get_quote(state, working=True))
+    else:
+        # Silent mode: ensure hatched flag is updated even if animation is skipped
+        if not state.get("hatched") and state["sessions"] >= EGG_HATCH_AT:
+            state["hatched"] = True
+            save_state(state)
 
 def cmd_show(state: dict):
     render(state, message=get_quote(state))
@@ -573,7 +580,7 @@ def cmd_watch(state: dict):
 def cmd_reset():
     if STATE_FILE.exists():
         STATE_FILE.unlink()
-    msg = "anygochi reset. A new egg awaits..."
+    msg = "openbuddy reset. A new egg awaits..."
     Console().print(f"[bold yellow]{msg}[/]") if HAS_RICH else print(msg)
 
 def cmd_info(state: dict):
@@ -618,7 +625,7 @@ def cmd_list():
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 USAGE = """\
-Usage: anygochi [command] [tool]
+Usage: openbuddy [command] [tool]
 
 Commands:
   show            Show your buddy (default)
@@ -629,10 +636,10 @@ Commands:
   list            List all creature types
 
 Examples:
-  anygochi
-  anygochi session codex
-  anygochi session aider
-  anygochi watch
+  openbuddy
+  openbuddy session codex
+  openbuddy session aider
+  openbuddy watch
 """
 
 def main():

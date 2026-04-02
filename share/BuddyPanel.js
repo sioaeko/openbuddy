@@ -1,5 +1,5 @@
 /**
- * anygochi BuddyOverlay — ANSI cursor-addressed overlay, zero layout impact.
+ * openbuddy BuddyOverlay — ANSI cursor-addressed overlay, zero layout impact.
  * Buddy width scales with terminal width; main layout reserves the space.
  */
 import { useEffect, useState, useCallback } from 'react';
@@ -10,7 +10,7 @@ import { join } from 'node:path';
 
 export { getBuddyWidth };
 
-const STATE_PATH = join(homedir(), '.config', 'anygochi', 'state.json');
+const STATE_PATH = join(homedir(), '.config', 'openbuddy', 'state.json');
 const STAGES     = [[0, 'egg'], [3, 'baby'], [12, 'adult'], [30, 'elder']];
 const EGG_HATCH  = 3;
 
