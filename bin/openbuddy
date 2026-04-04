@@ -545,6 +545,7 @@ def migrate_legacy() -> dict | None:
                     "hatched":       old.get("hatched", False),
                     "lifetime_tokens": old.get("lifetime_tokens", 0),
                     "tokscale_synced_at": old.get("tokscale_synced_at"),
+                    "lifetime_cost_usd": old.get("lifetime_cost_usd", 0),
                 }
                 save_state(state)
                 legacy_path.rename(legacy_path.with_suffix(".json.bak"))
@@ -571,6 +572,9 @@ def load_state() -> dict:
             if "tokscale_synced_at" not in state:
                 state["tokscale_synced_at"] = None
                 upgraded = True
+            if "lifetime_cost_usd" not in state:
+                state["lifetime_cost_usd"] = 0.0
+                upgraded = True
             if upgraded:
                 save_state(state)
             return state
@@ -592,6 +596,7 @@ def load_state() -> dict:
         "hatched":       False,
         "lifetime_tokens": 0,
         "tokscale_synced_at": None,
+        "lifetime_cost_usd": 0.0,
     }
     save_state(state)
     return state
@@ -645,7 +650,7 @@ def _resolve_npx() -> str | None:
     return None
 
 
-def get_tokscale_data(*period_flags: str) -> dict | None:
+def get_tokscale_data(*period_flags: str, timeout_sec: float = 120) -> dict | None:
     """Run tokscale --json. period_flags e.g. ('--today',) or () for all-time."""
     npx = _resolve_npx()
     if not npx:
@@ -654,7 +659,7 @@ def get_tokscale_data(*period_flags: str) -> dict | None:
     try:
         result = subprocess.run(
             cmd,
-            capture_output=True, text=True, timeout=120,
+            capture_output=True, text=True, timeout=timeout_sec,
             env=_tokscale_env(),
         )
         if result.returncode == 0 and result.stdout.strip():
@@ -697,6 +702,12 @@ def parse_tokscale_report(data: dict | list | None) -> dict:
                 total_input += int(e.get("input") or e.get("input_tokens") or 0)
                 total_output += int(e.get("output") or e.get("output_tokens") or 0)
                 total_reasoning += int(e.get("reasoning") or 0)
+        tc = data.get("totalCost")
+        if tc is not None:
+            try:
+                total_cost = float(tc)
+            except (TypeError, ValueError):
+                pass
     elif isinstance(data, list):
         for entry in data:
             if not isinstance(entry, dict):
@@ -741,13 +752,26 @@ def parse_tokscale_report(data: dict | list | None) -> dict:
     }
 
 
-def apply_tokscale_to_state(state: dict, lifetime_xp: int, *, run_animations: bool = True) -> None:
+def apply_tokscale_to_state(
+    state: dict,
+    lifetime_xp: int,
+    *,
+    total_cost: float | None = None,
+    run_animations: bool = True,
+) -> None:
     """Monotonic merge of tokscale lifetime total into state and optionally run hatch/evolve."""
     old_hatched = bool(state.get("hatched"))
     old_stage = get_stage_for_state(state)
     prev_lt = int(state.get("lifetime_tokens", 0) or 0)
     state["lifetime_tokens"] = max(prev_lt, int(lifetime_xp))
     state["tokscale_synced_at"] = datetime.now().isoformat()
+    if total_cost is not None:
+        try:
+            c = float(total_cost)
+            prev_c = float(state.get("lifetime_cost_usd") or 0)
+            state["lifetime_cost_usd"] = max(prev_c, c)
+        except (TypeError, ValueError):
+            pass
     new_stage = get_stage_for_state(state)
     names = [n for _, n in STAGES if n != "egg"]
 
@@ -786,6 +810,21 @@ def format_cost(c: float) -> str:
     if c >= 1.0:
         return f"${c:.2f}"
     return f"${c:.4f}"
+
+
+def _lifetime_cost_usd(state: dict) -> float:
+    try:
+        return float(state.get("lifetime_cost_usd") or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _codex_context_cost_line(state: dict) -> str:
+    c = _lifetime_cost_usd(state)
+    if c > 0:
+        return f"Est. spend (tokscale, all-time): {format_cost(c)}"
+    return "Est. spend: run `openbuddy sync` to load tokscale total $"
+
 
 # ── Rendering ─────────────────────────────────────────────────────────────────
 
@@ -828,6 +867,9 @@ def render_rich(state: dict, message: str = None):
             f"\n  \U0001f95a {left_s} more session(s) or {format_tokens(left_t)} more tokens (tokscale)\n",
             style="italic dim yellow",
         )
+        lc = _lifetime_cost_usd(state)
+        if lc > 0:
+            content.append(f"  \U0001f4b0 {format_cost(lc)} (tokscale est.)\n", style="dim white")
         if message:
             content.append(f'\n  \U0001f4ac "{message}"', style="italic white")
         console.print(Panel(content,
@@ -856,6 +898,9 @@ def render_rich(state: dict, message: str = None):
         content.append(f"  \u2192{next_at}",     style="dim yellow")
     content.append("\n", style="dim white")
     content.append(f"  (sess {sessions}  ·  tokscale \u2248{tok_pts}  ·  {format_tokens(lt)})\n", style="dim white")
+    lc = _lifetime_cost_usd(state)
+    if lc > 0:
+        content.append(f"  \U0001f4b0 {format_cost(lc)} (tokscale est.)\n", style="dim white")
     content.append("\n")
     if tool_str:
         content.append(f"  \U0001f6e0  {tool_str}\n", style="dim white")
@@ -890,6 +935,9 @@ def render_plain(state: dict, message: str = None):
         for line in CREATURES[state["creature"]]["ascii"]["egg"]:
             print(f"  {line}")
         print("\n  Something stirs inside...")
+        lc = _lifetime_cost_usd(state)
+        if lc > 0:
+            print(f"  Spend (tokscale est.): {format_cost(lc)}")
     else:
         creature = CREATURES[state["creature"]]
         stats    = creature["stats"]
@@ -898,6 +946,9 @@ def render_plain(state: dict, message: str = None):
         print(f"  {creature['name']}  [{creature['rarity'].upper()}]")
         print(f"  {creature['title']}")
         print(f"  {stage.upper()}  Progress: {prog}  (sess {sessions}, tokscale ~{tok_pts}, {lt} tok)")
+        lc = _lifetime_cost_usd(state)
+        if lc > 0:
+            print(f"  Spend (tokscale est.): {format_cost(lc)}")
         if tool_str:
             print(f"  Tools: {tool_str}")
         print()
@@ -1085,10 +1136,16 @@ def cmd_info(state: dict):
                 f"[bold white]Stage:[/] EGG  sessions {state['sessions']}/{EGG_HATCH_AT}  "
                 f"tok {format_tokens(lt)}/{format_tokens(TOKENS_TO_HATCH)}"
             )
+            lc = _lifetime_cost_usd(state)
+            if lc > 0:
+                c.print(f"[bold]Spend:[/]   {format_cost(lc)} (tokscale est., all-time)")
         else:
             creature = CREATURES[state["creature"]]
             c.print(f"[bold]Name:[/]   {creature['name']}  [{creature['rarity'].upper()}]")
             c.print(f"[bold]Stage:[/]  {stage}  (progress {prog}: sess {state['sessions']}, {format_tokens(lt)} tok)")
+            lc = _lifetime_cost_usd(state)
+            if lc > 0:
+                c.print(f"[bold]Spend:[/]   {format_cost(lc)} (tokscale est., all-time)")
             if ts:
                 c.print(f"[bold]Tools:[/]  {_tool_summary(state)}")
     else:
@@ -1098,6 +1155,9 @@ def cmd_info(state: dict):
             creature = CREATURES[state["creature"]]
             print(f"Name:  {creature['name']}  [{creature['rarity'].upper()}]")
             print(f"Stage: {stage}  (progress {prog}, {state['sessions']} sess, {lt} tok)")
+            lc = _lifetime_cost_usd(state)
+            if lc > 0:
+                print(f"Spend: {format_cost(lc)} (tokscale est., all-time)")
             if ts:
                 print(f"Tools: {_tool_summary(state)}")
 
@@ -1160,6 +1220,9 @@ def cmd_stats(state: dict):
         lt_st = int(state.get("lifetime_tokens", 0) or 0)
         if lt_st > 0:
             tbl.add_row("Tokscale (stored)", format_tokens(lt_st))
+        lc_st = _lifetime_cost_usd(state)
+        if lc_st > 0:
+            tbl.add_row("Tokscale est. spend", format_cost(lc_st))
         tbl.add_row("Progress pts", str(progress_points(state)))
         tbl.add_row("Today", str(today_sessions))
         tbl.add_row("This week", str(week_sessions))
@@ -1211,6 +1274,9 @@ def cmd_stats(state: dict):
         print(f"  Total:   {sessions} sessions  progress {progress_points(state)}")
         if lt_st > 0:
             print(f"  Tokscale stored: {lt_st}")
+        lc_st = _lifetime_cost_usd(state)
+        if lc_st > 0:
+            print(f"  Tokscale est. spend: {format_cost(lc_st)}")
         print(f"  Today:   {today_sessions}")
         print(f"  Week:    {week_sessions}")
         print(f"  Streak:  {streak} day(s)")
@@ -1315,14 +1381,19 @@ def cmd_tokens(state: dict, apply_sync: bool = False):
             (Console().print(f"[yellow]{msg}[/]") if HAS_RICH else print(msg))
             return
         life = parse_tokscale_report(all_d)
-        apply_tokscale_to_state(state, life["total_xp"], run_animations=True)
+        apply_tokscale_to_state(
+            state, life["total_xp"], total_cost=life.get("total_cost"), run_animations=True
+        )
         if HAS_RICH:
+            sp = format_cost(_lifetime_cost_usd(state)) if _lifetime_cost_usd(state) > 0 else "—"
             Console().print(
                 f"[dim]Stored lifetime XP: {format_tokens(state['lifetime_tokens'])} "
-                f"(progress {progress_points(state)}).[/]\n"
+                f"(progress {progress_points(state)}), est. spend {sp}.[/]\n"
             )
         else:
-            print(f"  Synced: {state['lifetime_tokens']} tok → progress {progress_points(state)}")
+            lc = _lifetime_cost_usd(state)
+            extra = f", spend {format_cost(lc)}" if lc > 0 else ""
+            print(f"  Synced: {state['lifetime_tokens']} tok → progress {progress_points(state)}{extra}")
         render(state, message=get_quote(state))
 
 
@@ -1345,15 +1416,20 @@ def cmd_sync(state: dict, quiet: bool = False):
         (Console().print(f"[yellow]{msg}[/]") if HAS_RICH else print(msg))
         return
     life = parse_tokscale_report(all_d)
-    apply_tokscale_to_state(state, life["total_xp"], run_animations=not quiet)
+    apply_tokscale_to_state(
+        state, life["total_xp"], total_cost=life.get("total_cost"), run_animations=not quiet
+    )
     if quiet:
         return
+    lc = _lifetime_cost_usd(state)
+    spend_s = f", est. spend {format_cost(lc)}" if lc > 0 else ""
     if HAS_RICH:
         Console().print(
-            f"[green]OK[/] — stored {format_tokens(state['lifetime_tokens'])}, progress {progress_points(state)}.\n"
+            f"[green]OK[/] — stored {format_tokens(state['lifetime_tokens'])}, "
+            f"progress {progress_points(state)}{spend_s}.\n"
         )
     else:
-        print(f"OK — {state['lifetime_tokens']} tok, progress {progress_points(state)}")
+        print(f"OK — {state['lifetime_tokens']} tok, progress {progress_points(state)}{spend_s}")
     render(state, message=get_quote(state))
 
 # ── Codex CLI hooks (SessionStart additionalContext — inside Codex, not a side window) ──
@@ -1364,10 +1440,12 @@ CODEX_HOOKS_FILE = Path.home() / ".codex" / "hooks.json"
 def format_codex_additional_context(state: dict) -> str:
     """Short text injected into Codex as developer additionalContext (SessionStart hook)."""
     lt = int(state.get("lifetime_tokens", 0) or 0)
+    cost_ln = _codex_context_cost_line(state)
     if not state.get("hatched"):
         return (
             f"[openbuddy] Egg — sessions {state.get('sessions', 0)}/{EGG_HATCH_AT}, "
             f"tokens {format_tokens(lt)}/{format_tokens(TOKENS_TO_HATCH)} (tokscale).\n"
+            f"{cost_ln}\n"
             f"CLI: openbuddy show  |  openbuddy sync  |  openbuddy codex-install-hook"
         )
     c = CREATURES[state["creature"]]
@@ -1380,6 +1458,7 @@ def format_codex_additional_context(state: dict) -> str:
     return (
         f"[openbuddy] {c['name']} — {st} — progress {prog}{nxt_s}\n"
         f"{c['title']}{tools_s}\n"
+        f"{cost_ln}\n"
         f"CLI: openbuddy show  |  openbuddy sync"
     )
 
@@ -1391,6 +1470,17 @@ def cmd_codex_hook_session_start() -> None:
     except Exception:
         pass
     state = load_state()
+    # Pull all-time $ from tokscale when missing (stdout must stay JSON-only — no animations)
+    if _resolve_npx() and _lifetime_cost_usd(state) <= 0:
+        fresh = get_tokscale_data(timeout_sec=30)
+        if fresh:
+            life = parse_tokscale_report(fresh)
+            apply_tokscale_to_state(
+                state,
+                life["total_xp"],
+                total_cost=life.get("total_cost"),
+                run_animations=False,
+            )
     ctx = format_codex_additional_context(state)
     print(
         json.dumps(
