@@ -11,6 +11,13 @@
 #   openbuddy-wrap codex
 #   openbuddy-wrap aider
 #   openbuddy-wrap gh
+#
+# Optional env (runtime, when using generated wrappers):
+#   OPENBUDDY_NO_TMUX=1          — skip auto-spawned tmux session; run tool in current tty, then openbuddy show
+#   OPENBUDDY_TMUX_PCT=22        — width % for the buddy pane (tmux split -p)
+#   OPENBUDDY_NO_PAUSE_AFTER=1   — do not wait for Enter after openbuddy show (non-tmux / after tool exits)
+#   OPENBUDDY_AUTO_SYNC=1        — after session --silent, background: openbuddy sync --quiet (tokscale → progress)
+#   OPENBUDDY_POPUP_WATCH=1      — Windows .cmd only: also open a separate watch window (legacy behavior)
 
 set -euo pipefail
 
@@ -27,16 +34,20 @@ require_openbuddy() {
 }
 
 # Find the real binary for a tool name, skipping wrappers in LOCAL_BIN
+# Also checks tool.exe / tool.cmd (npm global on Windows / Git Bash)
 find_real_binary() {
     local tool="$1"
-    # Walk PATH entries; skip our own LOCAL_BIN wrapper if present
     while IFS= read -r -d ':' dir; do
         [[ -z "$dir" ]] && continue
-        local candidate="$dir/$tool"
-        if [[ -x "$candidate" && "$dir" != "$LOCAL_BIN" ]]; then
-            echo "$candidate"
-            return 0
-        fi
+        [[ "$dir" == "$LOCAL_BIN" ]] && continue
+        local c
+        for c in "$dir/$tool" "$dir/${tool}.exe" "$dir/${tool}.cmd"; do
+            [[ -e "$c" ]] || continue
+            if [[ -x "$c" ]] || [[ "$c" == *.cmd ]] || [[ "$c" == *.exe ]]; then
+                echo "$c"
+                return 0
+            fi
+        done
     done <<< "${PATH}:"
     return 1
 }
@@ -86,33 +97,55 @@ set -euo pipefail
 OPENBUDDY_BIN="$OPENBUDDY"
 REAL_BIN="$real_bin"
 
+# Wait so the post-tool buddy panel is readable (skip in CI or if OPENBUDDY_NO_PAUSE_AFTER=1)
+_ob_prompt_after_show() {
+    [[ -n "\${OPENBUDDY_NO_PAUSE_AFTER:-}" ]] && return 0
+    [[ -n "\${CI:-}" ]] && return 0
+    echo "" >&2
+    read -r -p "[openbuddy] Press Enter to continue… " _ob_done < /dev/tty 2>/dev/null || true
+}
+
 if [[ -x "\$OPENBUDDY_BIN" && -z "\${OPENBUDDY_WRAPPED:-}" ]]; then
     export OPENBUDDY_WRAPPED=1
 
     if [[ -n "\${TMUX:-}" ]]; then
-        # Already in tmux: split a buddy pane on the right if not yet open
-        if ! tmux list-panes -F "#{pane_current_command}" 2>/dev/null | grep -q "python3"; then
-            tmux split-window -h -l 30 -d "\$OPENBUDDY_BIN watch" 2>/dev/null || true
+        # Already in tmux: split a buddy pane if nothing here is already running openbuddy watch
+        _ob_skip=0
+        for _ob_pid in \$(tmux list-panes -F '#{pane_pid}' 2>/dev/null); do
+            [[ -z "\$_ob_pid" ]] && continue
+            _ob_arg=\$(ps -p "\$_ob_pid" -o args= 2>/dev/null || ps -p "\$_ob_pid" -o command= 2>/dev/null || true)
+            case "\$_ob_arg" in *openbuddy*watch*) _ob_skip=1; break ;; esac
+        done
+        if [[ "\$_ob_skip" -eq 0 ]]; then
+            _ob_titles=\$(tmux list-panes -F '#{pane_title}' 2>/dev/null | tr '\\n' ' ')
+            case "\$_ob_titles" in *[Oo]penbuddy*watch*) _ob_skip=1 ;; esac
+        fi
+        if [[ "\$_ob_skip" -eq 0 ]]; then
+            tmux split-window -h -p "\${OPENBUDDY_TMUX_PCT:-22}" -d "\$OPENBUDDY_BIN watch" 2>/dev/null || true
         fi
         "\$OPENBUDDY_BIN" session "$tool" --silent 2>/dev/null || true
+        [[ -n "\${OPENBUDDY_AUTO_SYNC:-}" ]] && "\$OPENBUDDY_BIN" sync --quiet 2>/dev/null &
         exec "\$REAL_BIN" "\$@"
 
-    elif command -v tmux &>/dev/null; then
+    elif command -v tmux &>/dev/null && [[ -z "\${OPENBUDDY_NO_TMUX:-}" ]]; then
         # Not in tmux: create a new session with buddy on the right, tool on the left
         "\$OPENBUDDY_BIN" session "$tool" --silent 2>/dev/null || true
+        [[ -n "\${OPENBUDDY_AUTO_SYNC:-}" ]] && "\$OPENBUDDY_BIN" sync --quiet 2>/dev/null &
         _sess="openbuddy-\$\$"
         exec tmux new-session -s "\$_sess" \
             -x "\$(tput cols)" -y "\$(tput lines)" \
-            "OPENBUDDY_WRAPPED=1 \$REAL_BIN \$(printf '%q ' \"\$@\"); echo; \$OPENBUDDY_BIN show; read -rsp '[press enter to close]'" \; \
-            split-window -h -l 30 -d "\$OPENBUDDY_BIN watch" \; \
+            "OPENBUDDY_WRAPPED=1 \$REAL_BIN \$(printf '%q ' \"\$@\"); echo; \$OPENBUDDY_BIN show; if [ -z \${OPENBUDDY_NO_PAUSE_AFTER:-} ] && [ -z \${CI:-} ]; then echo >&2; read -r -p '[openbuddy] Press Enter to close… ' _ob_x < /dev/tty 2>/dev/null || true; fi" \; \
+            split-window -h -p "\${OPENBUDDY_TMUX_PCT:-22}" -d "\$OPENBUDDY_BIN watch" \; \
             select-pane -t 0
 
     else
-        # No tmux: show session notification, run tool, show buddy after
+        # No tmux, or OPENBUDDY_NO_TMUX=1: same terminal, buddy after tool exits
         "\$OPENBUDDY_BIN" session "$tool" --silent 2>/dev/null || true
+        [[ -n "\${OPENBUDDY_AUTO_SYNC:-}" ]] && "\$OPENBUDDY_BIN" sync --quiet 2>/dev/null &
         "\$REAL_BIN" "\$@"
         _exit=\$?
         "\$OPENBUDDY_BIN" show 2>/dev/null || true
+        _ob_prompt_after_show
         exit \$_exit
     fi
 else
@@ -162,9 +195,19 @@ set PYTHONIOENCODING=utf-8
 if defined OPENBUDDY_WRAPPED goto :run
 set OPENBUDDY_WRAPPED=1
 "$python_exe" "$openbuddy_win" session $tool --silent 2>nul
-powershell -NoProfile -Command "\$env:PYTHONIOENCODING='utf-8'; Start-Process -FilePath '\$env:USERPROFILE\\AppData\\Local\\Programs\\Python\\Python310\\python.exe' -ArgumentList '\$env:USERPROFILE\\.local\\bin\\openbuddy','watch'"
+if defined OPENBUDDY_AUTO_SYNC start /b "" "$python_exe" "$openbuddy_win" sync --quiet 2>nul
+if defined OPENBUDDY_POPUP_WATCH (
+  start "openbuddy-watch" "$python_exe" "$openbuddy_win" watch
+)
 :run
 $run_line
+set OB_EXIT=%ERRORLEVEL%
+"$python_exe" "$openbuddy_win" show 2>nul
+if not defined OPENBUDDY_NO_PAUSE_AFTER if not defined CI (
+  echo.
+  set /p OB_=[openbuddy] Press Enter to continue... 
+)
+exit /b %OB_EXIT%
 CMDWRAPPER
         echo "  ✓ Created Windows wrapper: $win_wrapper"
     fi
@@ -214,13 +257,58 @@ do_list() {
     echo ""
 }
 
+# Preset groups: gemini(재미나이), codex, opencode, claude, aider, … PATH에 있는 것만 래핑
+do_preset() {
+    local preset="${1:-ai}"
+    require_openbuddy
+    echo ""
+    echo "  openbuddy-wrap — preset: $preset"
+    echo ""
+    local tools=()
+    case "$preset" in
+        ai|coding|agents)
+            tools=(
+                gemini
+                codex
+                opencode
+                claude
+                aider
+                amp
+                crush
+                qwen
+                kimi
+                roocode
+            )
+            ;;
+        *)
+            die "unknown preset '$preset' (try: ai)"
+            ;;
+    esac
+    set +e
+    local t
+    for t in "${tools[@]}"; do
+        if find_real_binary "$t" >/dev/null 2>&1; then
+            echo "  → wrapping $t"
+            do_wrap "$t" || echo "  ! wrap failed for $t (see above)"
+        else
+            echo "  (skip) $t — not in PATH"
+        fi
+    done
+    set -e
+    echo ""
+    echo "  Done. Check: openbuddy-wrap --list"
+    echo ""
+}
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 USAGE="Usage: openbuddy-wrap <toolname> [/path/to/real/binary]
+       openbuddy-wrap --preset ai      # gemini, codex, opencode, claude, aider, … (PATH에 있는 것만)
        openbuddy-wrap --list
        openbuddy-wrap --remove <toolname>
 
 Examples:
+  openbuddy-wrap --preset ai
   openbuddy-wrap codex
   openbuddy-wrap aider
   openbuddy-wrap gh /usr/bin/gh
@@ -236,6 +324,9 @@ case "${1:-}" in
     "--remove"|"remove")
         [[ -n "${2:-}" ]] || die "specify a tool name to remove"
         do_remove "$2" ;;
+    "--preset"|"preset")
+        [[ -n "${2:-}" ]] || die "usage: openbuddy-wrap --preset ai   (presets: ai)"
+        do_preset "$2" ;;
     -*)
         die "unknown option: $1" ;;
     *)

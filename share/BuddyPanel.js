@@ -20,13 +20,18 @@ const C = {
     blue: '\x1b[94m', yellow: '\x1b[93m', green: '\x1b[92m',
     magenta: '\x1b[95m', cyan: '\x1b[96m', white: '\x1b[97m', gray: '\x1b[90m',
 };
+const R = { brightRed: '\x1b[91m' };
 const CREATURE_COLOR = {
     debugrix: C.blue, velocode: C.yellow, refactoron: C.green,
     nullbyte: C.magenta, wizardex: C.cyan, compilox: C.yellow,
+    tokivore: R.brightRed, patchwork: C.white, overflox: C.yellow,
+    syntaxia: C.magenta,
 };
 const CREATURE_NAME = {
     debugrix: 'Debugrix', velocode: 'Velocode', refactoron: 'Refactoron',
     nullbyte: 'Nullbyte', wizardex: 'Wizardex', compilox: 'Compilox',
+    tokivore: 'Tokivore', patchwork: 'Patchwork', overflox: 'Overflox',
+    syntaxia: 'Syntaxia',
 };
 const CREATURE_ASCII = {
     debugrix:   { egg: ['.~~~~.','( ???? )','`~~~~\''], baby: ['(ó‿ò)','/|_|\\','| | '], adult: ['(◉‿◉)','<|  |>','/|\\','d b'], elder: ['╔(◉_◉)╗','║BUG║','╚══╦╝','  ╨ '] },
@@ -35,14 +40,22 @@ const CREATURE_ASCII = {
     nullbyte:   { egg: ['.~~~~.','( ∅∅∅ )','`~~~~\''], baby: ['.~~~~.','|?__?|','`~~~~\''], adult: ['.─────.','│∅  ∅│','│  ▽ │','`─────\''], elder: ['╔═════╗','║∅  ∅║','║NULL║','╚═════╝'] },
     wizardex:   { egg: ['*~~~~*','( ✦✦✦ )','*~~~~*'], baby: [' *.*',' (^_^)',' /|*|\\'], adult: ['✦(^‿^)✦','✦/|~|\\✦','✦|  |✦','✦✦✦✦✦'], elder: ['✦(◕‿◕)✦','✦|MAGIC|✦','✦| |✦','✦✦✦✦✦'] },
     compilox:   { egg: ['.~~~~.','( .... )','`~~~~\''], baby: ['(u u)','/| |\\','| | '], adult: ['(u_u)','/|  |\\','|·|·|','d  b'], elder: ['┌(u_u)┐','│BUILD│','│ OK │','└────┘'] },
+    tokivore:   { egg: ['.~~~~.','( $$$$ )','`~~~~\''], baby: ['(>o<)$','/|$|\\','| | '], adult: ['$(>o<)$','/|$$$|\\','|   |','d $ b'], elder: ['╔$(>o<)$╗','║TOKEN║','║FEAST║','╚═════╝'] },
+    patchwork:  { egg: ['.~~~~.','( #### )','`~~~~\''], baby: ['[o_o]','#|_|#','| | '], adult: ['#[o_o]#','#|   |#','#| |#','# # '], elder: ['┏#[o_o]#┓','┃PATCH┃','┃WORK ┃','┗#####┛'] },
+    overflox:   { egg: ['.~~~~.','( ?!?! )','`~~~~\''], baby: ['(ö_ö)','/|≡|\\','| | '], adult: ['(ö_ö)↑','/|SO |\\','|   |','d   b'], elder: ['╔(ö_ö)↑╗','║STACK║','║ 42  ║','╚═════╝'] },
+    syntaxia:   { egg: ['*~~~~*','( ;{;} )','*~~~~*'], baby: ['{;òó;}','/|;|\\','; ; '], adult: ['{(◉;◉)}','/|{ }|\\','|; ;|',';   ;'], elder: ['✦{(◉;◉)}✦','✦|SYNTAX|✦','✦|SAFE|✦',';✦✦✦✦✦;'] },
 };
 const IDLE_QUOTES = {
-    debugrix:   ['sniffing bugs...', 'NULL? Really?', 'I smell a segfault.'],
-    velocode:   ['O(n) too slow.', 'Cache everything.', 'Waiting... ugh.'],
-    refactoron: ['Extract that method.', 'Magic numbers?'],
-    nullbyte:   ['...', 'void.', 'NaN.'],
-    wizardex:   ['tried monads?', 'Lambda > loop.'],
-    compilox:   ['...compiling...', '56 warnings. Fine.'],
+    debugrix:   ['sniffing bugs...', 'NULL? Really?', 'I smell a segfault.', 'Off-by-one again, huh.'],
+    velocode:   ['O(n) too slow.', 'Cache everything.', 'Waiting... ugh.', 'Blazing fast or go home.'],
+    refactoron: ['Extract that method.', 'Magic numbers?', 'Have you heard of SRP?'],
+    nullbyte:   ['...', 'void.', 'NaN.', 'undefined behavior.'],
+    wizardex:   ['tried monads?', 'Lambda > loop.', 'The fold is mightier than the loop.'],
+    compilox:   ['...compiling...', '56 warnings. Fine.', 'Patience. The linker is thinking.'],
+    tokivore:   ['Feed me tokens...', 'I smell fresh completions.', 'How many tokens today?'],
+    patchwork:  ['Cherry-pick or rebase?', 'Merge conflict? I live here.', 'git stash pop'],
+    overflox:   ['Have you tried turning it off?', 'The answer has 2.4k upvotes.', 'Read the docs? Who does that?'],
+    syntaxia:   ['Missing semicolon on line 1.', 'Unexpected } at end of input.', 'The linter is always watching.'],
 };
 
 // ── Sizing ────────────────────────────────────────────────────────────────────

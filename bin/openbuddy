@@ -6,10 +6,13 @@ State stored in ~/.config/openbuddy/state.json
 
 import json
 import os
+import shlex
+import shutil
 import sys
 import time
 import random
-from datetime import datetime
+import subprocess
+from datetime import datetime, timedelta
 from pathlib import Path
 
 # Fix encoding on Windows (cp949/cp932 can't handle Unicode symbols)
@@ -23,6 +26,7 @@ try:
     from rich.console import Console
     from rich.panel import Panel
     from rich.text import Text
+    from rich.table import Table
     HAS_RICH = True
 except ImportError:
     HAS_RICH = False
@@ -33,6 +37,7 @@ STATE_FILE = STATE_DIR / "state.json"
 # Legacy migration paths
 LEGACY_PATHS = [
     Path.home() / ".codex" / "buddy.json",
+    Path.home() / ".config" / "anygochi" / "state.json",
 ]
 
 # ── Creature definitions ──────────────────────────────────────────────────────
@@ -49,17 +54,17 @@ CREATURES = {
             "egg":   ["   .~~~~.",
                       "  ( ???? )",
                       "   `~~~~'"],
-            "baby":  ["  (ó‿ò) ",
+            "baby":  ["  (o\u0301\u203fo\u0300) ",
                       "  /|_|\\ ",
                       "   | |  "],
-            "adult": ["  (◉‿◉) ",
+            "adult": ["  (\u25c9\u203f\u25c9) ",
                       " <|   |>",
                       "  /| |\\ ",
                       "   d b  "],
-            "elder": [" ╔(◉_◉)╗",
-                      " ║ BUG ║",
-                      " ╚══╦══╝",
-                      "    ╨   "],
+            "elder": [" \u2554(\u25c9_\u25c9)\u2557",
+                      " \u2551 BUG \u2551",
+                      " \u255a\u2550\u2550\u2566\u2550\u2550\u255d",
+                      "    \u2568   "],
         },
         "quotes": {
             "idle": [
@@ -75,6 +80,11 @@ CREATURES = {
                 "Core dumped. My work here is done.",
                 "The bug was in the chair all along.",
             ],
+            "fed": [
+                "Mmm, tokens... *burp*",
+                "Fed well. Bug appetite growing.",
+                "That's a lot of tokens for one bug.",
+            ],
         },
     },
     "velocode": {
@@ -88,15 +98,15 @@ CREATURES = {
             "egg":   ["   .~~~~.",
                       "  ( ~~~~ )",
                       "   `~~~~'"],
-            "baby":  [" ~(>‿<)~ ",
+            "baby":  [" ~(>\u203f<)~ ",
                       "   /|\\  ",
                       "   d b  "],
-            "adult": ["~~(>‿<)~~",
+            "adult": ["~~(>\u203f<)~~",
                       "  ~/|\\~ ",
                       " ~/ | \\~"],
-            "elder": ["≋≋(>‿<)≋≋",
-                      " ≋~/|\\~≋",
-                      "≋≋/ | \\≋≋"],
+            "elder": ["\u224b\u224b(>\u203f<)\u224b\u224b",
+                      " \u224b~/|\\~\u224b",
+                      "\u224b\u224b/ | \\\u224b\u224b"],
         },
         "quotes": {
             "idle": [
@@ -112,6 +122,11 @@ CREATURES = {
                 "LGTM, merge it, ship it.",
                 "Profiled it. Your code is slow.",
             ],
+            "fed": [
+                "Tokens per second? Rookie numbers.",
+                "Consumed faster than generated.",
+                "Speed-eating tokens since day 1.",
+            ],
         },
     },
     "refactoron": {
@@ -123,19 +138,19 @@ CREATURES = {
         "description": "This code could be cleaner.\nRefactoron won't rest until it is.",
         "ascii": {
             "egg":   ["   .~~~~.",
-                      "  ( ◇◇◇◇ )",
+                      "  ( \u25c7\u25c7\u25c7\u25c7 )",
                       "   `~~~~'"],
             "baby":  ["  /\\_/\\ ",
                       " ( o.o ) ",
                       "  > ^ < "],
             "adult": ["  /\\_/\\ ",
-                      " ( ●.● ) ",
-                      " (> ♦ <) ",
-                      "  ‾‾‾‾  "],
-            "elder": ["  ╱\\_/╲ ",
-                      " ╱ ●.● ╲",
+                      " ( \u25cf.\u25cf ) ",
+                      " (> \u2666 <) ",
+                      "  \u203e\u203e\u203e\u203e  "],
+            "elder": ["  \u2571\\_/\u2572 ",
+                      " \u2571 \u25cf.\u25cf \u2572",
                       "(>CLEAN<)",
-                      " ╲_____╱"],
+                      " \u2572_____\u2571"],
         },
         "quotes": {
             "idle": [
@@ -151,6 +166,11 @@ CREATURES = {
                 "SOLID principles satisfied.",
                 "90% coverage. Acceptable.",
             ],
+            "fed": [
+                "Token budget could be optimized.",
+                "Refactoring my diet plan...",
+                "Clean tokens, clean code.",
+            ],
         },
     },
     "nullbyte": {
@@ -162,19 +182,19 @@ CREATURES = {
         "description": "From the null pointer exception,\nit emerged. No one knows why.",
         "ascii": {
             "egg":   ["   .~~~~.",
-                      "  ( ∅∅∅∅ )",
+                      "  ( \u2205\u2205\u2205\u2205 )",
                       "   `~~~~'"],
             "baby":  ["  .~~~~.",
                       " |? __ ?|",
                       "  `~~~~'"],
-            "adult": ["  .──────.",
-                      " │ ∅    ∅ │",
-                      " │   ▽   │",
-                      "  `──────'"],
-            "elder": [" ╔════════╗",
-                      " ║ ∅    ∅ ║",
-                      " ║  NULL  ║",
-                      " ╚════════╝"],
+            "adult": ["  .\u2500\u2500\u2500\u2500\u2500\u2500.",
+                      " \u2502 \u2205    \u2205 \u2502",
+                      " \u2502   \u25bd   \u2502",
+                      "  `\u2500\u2500\u2500\u2500\u2500\u2500'"],
+            "elder": [" \u2554\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2557",
+                      " \u2551 \u2205    \u2205 \u2551",
+                      " \u2551  NULL  \u2551",
+                      " \u255a\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u255d"],
         },
         "quotes": {
             "idle": [
@@ -190,6 +210,11 @@ CREATURES = {
                 "Segmentation fault (core dumped)",
                 "The types... don't matter.",
             ],
+            "fed": [
+                "Tokens = NULL. As expected.",
+                "void consume(tokens) {}",
+                "NaN tokens consumed. Or were they?",
+            ],
         },
     },
     "wizardex": {
@@ -201,19 +226,19 @@ CREATURES = {
         "description": "Ancient. Wise. Writes one-liners that\ntake three meetings to understand.",
         "ascii": {
             "egg":   ["   *~~~~*",
-                      "  ( ✦✦✦✦ )",
+                      "  ( \u2726\u2726\u2726\u2726 )",
                       "   *~~~~*"],
             "baby":  ["   *.*  ",
                       "  (^_^) ",
                       "  /|*|\\ "],
-            "adult": [" ✦(^‿^)✦",
-                      "✦/|~~~|\\✦",
-                      " ✦|   |✦ ",
-                      "  ✦✦✦✦✦ "],
-            "elder": ["✦✦(◕‿◕)✦✦",
-                      "✦/|MAGIC|\\✦",
-                      " ✦|     |✦",
-                      " ✦✦✦✦✦✦✦ "],
+            "adult": [" \u2726(^\u203f^)\u2726",
+                      "\u2726/|~~~|\\\u2726",
+                      " \u2726|   |\u2726 ",
+                      "  \u2726\u2726\u2726\u2726\u2726 "],
+            "elder": ["\u2726\u2726(\u25d5\u203f\u25d5)\u2726\u2726",
+                      "\u2726/|MAGIC|\\\u2726",
+                      " \u2726|     |\u2726",
+                      " \u2726\u2726\u2726\u2726\u2726\u2726\u2726 "],
         },
         "quotes": {
             "idle": [
@@ -228,6 +253,11 @@ CREATURES = {
                 "One regex to rule them all.",
                 "The compiler bows before me.",
                 "Proof by contradiction. QED.",
+            ],
+            "fed": [
+                "Tokens transmuted into wisdom.",
+                "The arcane cost is... acceptable.",
+                "Each token fuels the spell.",
             ],
         },
     },
@@ -249,10 +279,10 @@ CREATURES = {
                       " /|   |\\ ",
                       "  | | |  ",
                       "  d   b  "],
-            "elder": [" ┌(u_u)┐",
-                      " │BUILD│",
-                      " │  OK │",
-                      " └─────┘"],
+            "elder": [" \u250c(u_u)\u2510",
+                      " \u2502BUILD\u2502",
+                      " \u2502  OK \u2502",
+                      " \u2514\u2500\u2500\u2500\u2500\u2500\u2518"],
         },
         "quotes": {
             "idle": [
@@ -268,6 +298,188 @@ CREATURES = {
                 "The wait was worth it.",
                 "Clean build. No shortcuts.",
             ],
+            "fed": [
+                "Slowly digesting tokens...",
+                "47 minutes to process lunch.",
+                "Patience. The tokens are linking.",
+            ],
+        },
+    },
+    # ── New creatures ────────────────────────────────────────────────────────
+    "tokivore": {
+        "name": "Tokivore",
+        "title": "The Token Devourer",
+        "rarity": "rare",
+        "color": "bright_red",
+        "stats": {"intelligence": 8, "speed": 9, "creativity": 7, "endurance": 8},
+        "description": "Born from the tokscale leaderboard.\nIt feeds on tokens and grows stronger.",
+        "ascii": {
+            "egg":   ["   .~~~~.",
+                      "  ( $$$$ )",
+                      "   `~~~~'"],
+            "baby":  ["  (>o<)$ ",
+                      "  /|$|\\ ",
+                      "   | |  "],
+            "adult": [" $(>o<)$ ",
+                      " /|$$$|\\ ",
+                      "  |   |  ",
+                      "  d $ b  "],
+            "elder": [" \u2554$(>o<)$\u2557",
+                      " \u2551TOKEN\u2551",
+                      " \u2551FEAST\u2551",
+                      " \u255a\u2550\u2550\u2550\u2550\u2550\u255d"],
+        },
+        "quotes": {
+            "idle": [
+                "Feed me tokens...",
+                "The API bill grows...",
+                "I smell fresh completions.",
+                "*checks tokscale nervously*",
+                "How many tokens today?",
+            ],
+            "working": [
+                "DELICIOUS context window.",
+                "Om nom nom... 100k tokens.",
+                "The cost was worth it.",
+                "Tokscale says I'm #1 consumer.",
+            ],
+            "fed": [
+                "MAGNIFICENT feast!",
+                "*rolling in tokens*",
+                "The Kardashev scale trembles.",
+            ],
+        },
+    },
+    "patchwork": {
+        "name": "Patchwork",
+        "title": "The Code Quilter",
+        "rarity": "common",
+        "color": "bright_white",
+        "stats": {"intelligence": 7, "speed": 6, "creativity": 10, "endurance": 7},
+        "description": "Stitched from a thousand PRs.\nEvery patch tells a story.",
+        "ascii": {
+            "egg":   ["   .~~~~.",
+                      "  ( #### )",
+                      "   `~~~~'"],
+            "baby":  ["  [o_o] ",
+                      "  #|_|# ",
+                      "   | |  "],
+            "adult": [" #[o_o]# ",
+                      " #|   |# ",
+                      "  #| |#  ",
+                      "   # #   "],
+            "elder": [" \u250f#[o_o]#\u2513",
+                      " \u2503PATCH\u2503",
+                      " \u2503WORK \u2503",
+                      " \u2517#####\u251b"],
+        },
+        "quotes": {
+            "idle": [
+                "Cherry-pick or rebase?",
+                "Another day, another PR.",
+                "git stash pop",
+                "Merge conflict? I live here.",
+                "Sewing patches since v0.1.",
+            ],
+            "working": [
+                "Patched. Ship it.",
+                "3 files changed, +420 -69.",
+                "Applied cleanly. No conflicts.",
+                "The diff is beautiful.",
+            ],
+            "fed": [
+                "Patches need fuel too.",
+                "Token-quilted and warm.",
+                "Each token, a new stitch.",
+            ],
+        },
+    },
+    "overflox": {
+        "name": "Overflox",
+        "title": "The Stack Sage",
+        "rarity": "rare",
+        "color": "bright_yellow",
+        "stats": {"intelligence": 10, "speed": 4, "creativity": 8, "endurance": 9},
+        "description": "Has read every StackOverflow answer.\nTwice. The second time for fun.",
+        "ascii": {
+            "egg":   ["   .~~~~.",
+                      "  ( ?!?! )",
+                      "   `~~~~'"],
+            "baby":  ["  (\u00f6_\u00f6) ",
+                      "  /|\u2261|\\ ",
+                      "   | |  "],
+            "adult": [" (\u00f6_\u00f6)\u2191 ",
+                      " /|SO |\\ ",
+                      "  |   |  ",
+                      "  d   b  "],
+            "elder": [" \u2554(\u00f6_\u00f6)\u2191\u2557",
+                      " \u2551STACK\u2551",
+                      " \u2551 42  \u2551",
+                      " \u255a\u2550\u2550\u2550\u2550\u2550\u255d"],
+        },
+        "quotes": {
+            "idle": [
+                "This question was closed as duplicate.",
+                "Have you tried turning it off?",
+                "The answer has 2.4k upvotes.",
+                "Marked as accepted 7 years ago.",
+                "Read the docs? Who does that?",
+            ],
+            "working": [
+                "Found it. SO answer from 2012.",
+                "Copy-paste engineering at its finest.",
+                "The accepted answer was wrong, btw.",
+                "Updated for 2026. You're welcome.",
+            ],
+            "fed": [
+                "Upvote = 1 token. Seems fair.",
+                "Knowledge consumed. Wisdom gained.",
+                "The answer was in the tokens.",
+            ],
+        },
+    },
+    "syntaxia": {
+        "name": "Syntaxia",
+        "title": "The Grammar Guardian",
+        "rarity": "legendary",
+        "color": "bright_magenta",
+        "stats": {"intelligence": 10, "speed": 7, "creativity": 9, "endurance": 10},
+        "description": "Guardian of semicolons and brackets.\nNo syntax error escapes its gaze.",
+        "ascii": {
+            "egg":   ["   *~~~~*",
+                      "  ( ;{;} )",
+                      "   *~~~~*"],
+            "baby":  ["  {;\u00f2\u00f3;} ",
+                      "  /|;|\\ ",
+                      "   ; ;  "],
+            "adult": [" {(\u25c9;\u25c9)} ",
+                      " /|{ }|\\ ",
+                      "  |; ;|  ",
+                      "  ;   ;  "],
+            "elder": ["\u2726{(\u25c9;\u25c9)}\u2726",
+                      "\u2726|SYNTAX|\u2726",
+                      " \u2726|SAFE|\u2726 ",
+                      " ;\u2726\u2726\u2726\u2726\u2726; "],
+        },
+        "quotes": {
+            "idle": [
+                "Missing semicolon on line 1.",
+                "Unexpected } at end of input.",
+                "IndentationError. Tab or spaces?",
+                "SyntaxError: invalid syntax",
+                "The linter is always watching.",
+            ],
+            "working": [
+                "All brackets balanced. Perfection.",
+                "Zero syntax errors. As it should be.",
+                "The AST is pleased.",
+                "Parsed flawlessly. Chef's kiss.",
+            ],
+            "fed": [
+                "Tokens parsed. No errors found.",
+                "Syntactically delicious.",
+                "Every token in its right place.",
+            ],
         },
     },
 }
@@ -275,21 +487,40 @@ CREATURES = {
 RARITY_WEIGHTS   = {"common": 65, "rare": 28, "legendary": 7}
 STAGES           = [(0, "egg"), (3, "baby"), (12, "adult"), (30, "elder")]
 EGG_HATCH_AT     = 3
+# tokscale 누적 토큰(input+output+reasoning)을 진행도로 환산: 1단위 ≈ 이 토큰 수
+TOKENS_PER_PROGRESS_UNIT = 100_000
+# 세션 3회 대신, 이 토큰만으로도 알 부화
+TOKENS_TO_HATCH            = 250_000
 
 # ── State management ──────────────────────────────────────────────────────────
 
-def get_stage(sessions: int) -> str:
+def get_stage(progress: int) -> str:
     stage = "egg"
     for threshold, name in STAGES:
-        if sessions >= threshold:
+        if progress >= threshold:
             stage = name
     return stage
 
-def get_next_stage_at(sessions: int) -> int | None:
+def get_next_stage_at(progress: int) -> int | None:
     for threshold, _ in STAGES:
-        if threshold > sessions:
+        if threshold > progress:
             return threshold
     return None
+
+def progress_points(state: dict) -> int:
+    """래퍼 세션 수와 tokscale 누적 토큰 중 더 큰 쪽을 진행도로 씀 (둘 다 성장에 기여)."""
+    sess = int(state.get("sessions", 0) or 0)
+    lt   = int(state.get("lifetime_tokens", 0) or 0)
+    from_tokens = lt // TOKENS_PER_PROGRESS_UNIT
+    return max(sess, from_tokens)
+
+def get_stage_for_state(state: dict) -> str:
+    return get_stage(progress_points(state))
+
+def egg_should_hatch(state: dict) -> bool:
+    if state.get("hatched"):
+        return False
+    return state.get("sessions", 0) >= EGG_HATCH_AT or int(state.get("lifetime_tokens", 0) or 0) >= TOKENS_TO_HATCH
 
 def pick_creature() -> str:
     pool = []
@@ -298,20 +529,22 @@ def pick_creature() -> str:
     return random.choice(pool)
 
 def migrate_legacy() -> dict | None:
-    """Check for old codex-buddy state and migrate it."""
+    """Check for old codex-buddy / anygochi state and migrate it."""
     for legacy_path in LEGACY_PATHS:
         if legacy_path.exists():
             try:
                 with open(legacy_path) as f:
                     old = json.load(f)
-                # Adapt old schema to new
                 state = {
                     "creature":      old.get("creature", pick_creature()),
                     "sessions":      old.get("sessions", 0),
-                    "tool_sessions": {"codex": old.get("sessions", 0)},
+                    "tool_sessions": old.get("tool_sessions", {"legacy": old.get("sessions", 0)}),
+                    "daily_log":     old.get("daily_log", {}),
                     "created_at":    old.get("created_at", datetime.now().isoformat()),
                     "last_session":  old.get("last_session"),
                     "hatched":       old.get("hatched", False),
+                    "lifetime_tokens": old.get("lifetime_tokens", 0),
+                    "tokscale_synced_at": old.get("tokscale_synced_at"),
                 }
                 save_state(state)
                 legacy_path.rename(legacy_path.with_suffix(".json.bak"))
@@ -325,9 +558,20 @@ def load_state() -> dict:
         try:
             with open(STATE_FILE) as f:
                 state = json.load(f)
-            # Ensure tool_sessions key exists (schema upgrade)
+            upgraded = False
             if "tool_sessions" not in state:
                 state["tool_sessions"] = {"legacy": state.get("sessions", 0)}
+                upgraded = True
+            if "daily_log" not in state:
+                state["daily_log"] = {}
+                upgraded = True
+            if "lifetime_tokens" not in state:
+                state["lifetime_tokens"] = 0
+                upgraded = True
+            if "tokscale_synced_at" not in state:
+                state["tokscale_synced_at"] = None
+                upgraded = True
+            if upgraded:
                 save_state(state)
             return state
         except (json.JSONDecodeError, KeyError):
@@ -342,9 +586,12 @@ def load_state() -> dict:
         "creature":      creature_key,
         "sessions":      0,
         "tool_sessions": {},
+        "daily_log":     {},
         "created_at":    datetime.now().isoformat(),
         "last_session":  None,
         "hatched":       False,
+        "lifetime_tokens": 0,
+        "tokscale_synced_at": None,
     }
     save_state(state)
     return state
@@ -354,11 +601,152 @@ def save_state(state: dict):
     with open(STATE_FILE, "w") as f:
         json.dump(state, f, indent=2)
 
+# ── Tokscale integration ─────────────────────────────────────────────────────
+
+def get_tokscale_data(*period_flags: str) -> dict | None:
+    """Run tokscale --json. period_flags e.g. ('--today',) or () for all-time."""
+    cmd = ["npx", "-y", "tokscale@latest", "--json", "--no-spinner", *period_flags]
+    try:
+        result = subprocess.run(
+            cmd,
+            capture_output=True, text=True, timeout=120,
+            env={**os.environ, "NODE_NO_WARNINGS": "1"},
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            return json.loads(result.stdout.strip())
+    except (subprocess.TimeoutExpired, FileNotFoundError, json.JSONDecodeError):
+        pass
+    return None
+
+
+def parse_tokscale_report(data: dict | list | None) -> dict:
+    """Normalize tokscale JSON → display + lifetime XP (input+output+reasoning)."""
+    total_input = total_output = total_reasoning = 0
+    total_cost = 0.0
+    platforms: dict[str, int] = {}
+
+    if isinstance(data, dict) and data.get("entries"):
+        entries = data["entries"]
+        for e in entries:
+            if not isinstance(e, dict):
+                continue
+            cl = e.get("client") or e.get("platform") or e.get("tool") or "unknown"
+            inp = int(e.get("input") or e.get("input_tokens") or e.get("inputTokens") or 0)
+            out = int(e.get("output") or e.get("output_tokens") or e.get("outputTokens") or 0)
+            reason = int(e.get("reasoning") or 0)
+            cost = float(e.get("cost") or 0)
+            total_cost += cost
+            platforms[cl] = platforms.get(cl, 0) + inp + out + reason
+        ti = data.get("totalInput")
+        to = data.get("totalOutput")
+        if ti is not None and to is not None:
+            total_input = int(ti)
+            total_output = int(to)
+            total_reasoning = sum(
+                int(e.get("reasoning") or 0) for e in entries if isinstance(e, dict)
+            )
+        else:
+            for e in entries:
+                if not isinstance(e, dict):
+                    continue
+                total_input += int(e.get("input") or e.get("input_tokens") or 0)
+                total_output += int(e.get("output") or e.get("output_tokens") or 0)
+                total_reasoning += int(e.get("reasoning") or 0)
+    elif isinstance(data, list):
+        for entry in data:
+            if not isinstance(entry, dict):
+                continue
+            inp = int(entry.get("input_tokens", 0) or entry.get("inputTokens", 0) or entry.get("input", 0))
+            out = int(entry.get("output_tokens", 0) or entry.get("outputTokens", 0) or entry.get("output", 0))
+            reason = int(entry.get("reasoning", 0) or 0)
+            cost = float(entry.get("cost", 0) or 0)
+            plat = str(entry.get("platform", entry.get("tool", entry.get("client", "unknown"))))
+            total_input += inp
+            total_output += out
+            total_reasoning += reason
+            total_cost += cost
+            platforms[plat] = platforms.get(plat, 0) + inp + out + reason
+    elif isinstance(data, dict):
+        total_input = int(
+            data.get("totalInput")
+            or data.get("input_tokens", data.get("totalInputTokens", 0))
+            or 0
+        )
+        total_output = int(
+            data.get("totalOutput")
+            or data.get("output_tokens", data.get("totalOutputTokens", 0))
+            or 0
+        )
+        total_reasoning = int(data.get("totalReasoning", 0) or 0)
+        total_cost = float(data.get("totalCost", data.get("cost", 0)) or 0)
+        for p in data.get("platforms", data.get("tools", [])):
+            if isinstance(p, dict):
+                pname = p.get("name", p.get("platform", "?"))
+                ptok = int(p.get("tokens", p.get("totalTokens", 0)) or 0)
+                platforms[str(pname)] = ptok
+
+    total_xp = total_input + total_output + total_reasoning
+    return {
+        "total_input": total_input,
+        "total_output": total_output,
+        "total_reasoning": total_reasoning,
+        "total_xp": total_xp,
+        "total_cost": total_cost,
+        "platforms": platforms,
+    }
+
+
+def apply_tokscale_to_state(state: dict, lifetime_xp: int, *, run_animations: bool = True) -> None:
+    """Monotonic merge of tokscale lifetime total into state and optionally run hatch/evolve."""
+    old_hatched = bool(state.get("hatched"))
+    old_stage = get_stage_for_state(state)
+    prev_lt = int(state.get("lifetime_tokens", 0) or 0)
+    state["lifetime_tokens"] = max(prev_lt, int(lifetime_xp))
+    state["tokscale_synced_at"] = datetime.now().isoformat()
+    new_stage = get_stage_for_state(state)
+    names = [n for _, n in STAGES if n != "egg"]
+
+    if not old_hatched and egg_should_hatch(state):
+        state["hatched"] = True
+        save_state(state)
+        if run_animations:
+            hatch_animation(state)
+            st = get_stage_for_state(state)
+            try:
+                t_i = names.index(st)
+            except ValueError:
+                t_i = 0
+            for j in range(1, t_i + 1):
+                evolve_animation(state, names[j])
+    elif old_hatched and run_animations:
+        try:
+            i0 = names.index(old_stage)
+            i1 = names.index(new_stage)
+        except ValueError:
+            i0 = i1 = 0
+        if i1 > i0:
+            for j in range(i0 + 1, i1 + 1):
+                evolve_animation(state, names[j])
+
+    save_state(state)
+
+def format_tokens(n: int) -> str:
+    if n >= 1_000_000:
+        return f"{n / 1_000_000:.1f}M"
+    if n >= 1_000:
+        return f"{n / 1_000:.1f}K"
+    return str(n)
+
+def format_cost(c: float) -> str:
+    if c >= 1.0:
+        return f"${c:.2f}"
+    return f"${c:.4f}"
+
 # ── Rendering ─────────────────────────────────────────────────────────────────
 
 def stat_bar(value: int, width: int = 8) -> str:
     filled = round((value / 10) * width)
-    return "█" * filled + "░" * (width - filled)
+    return "\u2588" * filled + "\u2591" * (width - filled)
 
 def _tool_summary(state: dict) -> str:
     ts = state.get("tool_sessions", {})
@@ -370,7 +758,9 @@ def _tool_summary(state: dict) -> str:
 def render_rich(state: dict, message: str = None):
     console = Console()
     sessions = state["sessions"]
-    stage    = get_stage(sessions)
+    lt       = int(state.get("lifetime_tokens", 0) or 0)
+    prog     = progress_points(state)
+    stage    = get_stage_for_state(state)
     is_egg   = not state.get("hatched", False)
 
     if is_egg:
@@ -380,16 +770,23 @@ def render_rich(state: dict, message: str = None):
         content.append("  ???\n",                style="bold dim white")
         content.append("  The Unknown\n\n",       style="dim white")
         content.append(f"  EGG  ",               style="bold white")
-        content.append(f"Sessions: {sessions}/{EGG_HATCH_AT}\n\n", style="dim white")
+        content.append(
+            f"Sessions {sessions}/{EGG_HATCH_AT}  ·  tok {format_tokens(lt)}/{format_tokens(TOKENS_TO_HATCH)}\n\n",
+            style="dim white",
+        )
         for line in egg_art:
             content.append(f"  {line}\n",        style="bold white")
         content.append("\n  Something stirs inside...\n", style="dim white")
-        left = EGG_HATCH_AT - sessions
-        content.append(f"\n  🥚 Hatches in {left} more session(s)\n", style="italic dim yellow")
+        left_s = max(0, EGG_HATCH_AT - sessions)
+        left_t = max(0, TOKENS_TO_HATCH - lt)
+        content.append(
+            f"\n  \U0001f95a {left_s} more session(s) or {format_tokens(left_t)} more tokens (tokscale)\n",
+            style="italic dim yellow",
+        )
         if message:
-            content.append(f'\n  💬 "{message}"', style="italic white")
+            content.append(f'\n  \U0001f4ac "{message}"', style="italic white")
         console.print(Panel(content,
-            title="[bold white]✦ OPENBUDDY ✦[/]",
+            title="[bold white]\u2726 OPENBUDDY \u2726[/]",
             border_style="white", width=38, padding=(0, 1)))
         return
 
@@ -399,46 +796,51 @@ def render_rich(state: dict, message: str = None):
     stats    = creature["stats"]
     rarity_colors = {"common": "white", "rare": "bright_cyan", "legendary": "bright_yellow"}
     rarity_color  = rarity_colors[creature["rarity"]]
-    stage_icons   = {"egg": "🥚", "baby": "🐣", "adult": "✨", "elder": "👑"}
-    next_at  = get_next_stage_at(sessions)
+    stage_icons   = {"egg": "\U0001f95a", "baby": "\U0001f423", "adult": "\u2728", "elder": "\U0001f451"}
+    next_at  = get_next_stage_at(prog)
     tool_str = _tool_summary(state)
+    tok_pts  = lt // TOKENS_PER_PROGRESS_UNIT
 
     content = Text()
     content.append(f"  {creature['name']}",      style=f"bold {color}")
     content.append(f"  [{creature['rarity'].upper()}]\n", style=f"bold {rarity_color}")
     content.append(f"  {creature['title']}\n\n", style=f"dim {color}")
     content.append(f"  {stage_icons[stage]} {stage.upper()}", style="bold white")
-    content.append(f"  Sessions: {sessions}",    style="dim white")
+    content.append(f"  Progress: {prog}",        style="dim white")
     if next_at:
-        content.append(f"  →{next_at}",          style="dim yellow")
+        content.append(f"  \u2192{next_at}",     style="dim yellow")
+    content.append("\n", style="dim white")
+    content.append(f"  (sess {sessions}  ·  tokscale \u2248{tok_pts}  ·  {format_tokens(lt)})\n", style="dim white")
     content.append("\n")
     if tool_str:
-        content.append(f"  🛠  {tool_str}\n",    style="dim white")
+        content.append(f"  \U0001f6e0  {tool_str}\n", style="dim white")
     content.append("\n")
     for line in ascii_art:
         content.append(f"  {line}\n",            style=f"bold {color}")
     content.append("\n")
-    content.append(f"  🧠  {stat_bar(stats['intelligence'])}  {stats['intelligence']}/10\n", style="bright_white")
-    content.append(f"  ⚡  {stat_bar(stats['speed'])}  {stats['speed']}/10\n",               style="bright_white")
-    content.append(f"  🎨  {stat_bar(stats['creativity'])}  {stats['creativity']}/10\n",      style="bright_white")
-    content.append(f"  💪  {stat_bar(stats['endurance'])}  {stats['endurance']}/10\n",        style="bright_white")
+    content.append(f"  \U0001f9e0  {stat_bar(stats['intelligence'])}  {stats['intelligence']}/10\n", style="bright_white")
+    content.append(f"  \u26a1  {stat_bar(stats['speed'])}  {stats['speed']}/10\n",               style="bright_white")
+    content.append(f"  \U0001f3a8  {stat_bar(stats['creativity'])}  {stats['creativity']}/10\n",  style="bright_white")
+    content.append(f"  \U0001f4aa  {stat_bar(stats['endurance'])}  {stats['endurance']}/10\n",    style="bright_white")
     content.append(f"\n  {creature['description']}\n", style="dim white")
     if message:
-        content.append(f'\n  💬 "{message}"',    style=f"italic {color}")
+        content.append(f'\n  \U0001f4ac "{message}"',    style=f"italic {color}")
 
     console.print(Panel(content,
-        title=f"[bold {color}]✦ OPENBUDDY ✦[/]",
+        title=f"[bold {color}]\u2726 OPENBUDDY \u2726[/]",
         border_style=color, width=38, padding=(0, 1)))
 
 def render_plain(state: dict, message: str = None):
     sessions = state["sessions"]
-    stage    = get_stage(sessions)
+    lt       = int(state.get("lifetime_tokens", 0) or 0)
+    prog     = progress_points(state)
+    stage    = get_stage_for_state(state)
     is_egg   = not state.get("hatched", False)
     print("=" * 38)
-    print("  ✦ OPENBUDDY ✦")
+    print("  \u2726 OPENBUDDY \u2726")
     print("=" * 38)
     if is_egg:
-        print(f"  Stage: EGG  ({sessions}/{EGG_HATCH_AT} sessions)")
+        print(f"  Stage: EGG  sessions {sessions}/{EGG_HATCH_AT}  tok {lt}/{TOKENS_TO_HATCH}")
         print()
         for line in CREATURES[state["creature"]]["ascii"]["egg"]:
             print(f"  {line}")
@@ -447,9 +849,10 @@ def render_plain(state: dict, message: str = None):
         creature = CREATURES[state["creature"]]
         stats    = creature["stats"]
         tool_str = _tool_summary(state)
+        tok_pts  = lt // TOKENS_PER_PROGRESS_UNIT
         print(f"  {creature['name']}  [{creature['rarity'].upper()}]")
         print(f"  {creature['title']}")
-        print(f"  {stage.upper()}  Sessions: {sessions}")
+        print(f"  {stage.upper()}  Progress: {prog}  (sess {sessions}, tokscale ~{tok_pts}, {lt} tok)")
         if tool_str:
             print(f"  Tools: {tool_str}")
         print()
@@ -461,7 +864,7 @@ def render_plain(state: dict, message: str = None):
         print(f"  CRE  {stat_bar(stats['creativity'])}  {stats['creativity']}/10")
         print(f"  END  {stat_bar(stats['endurance'])}  {stats['endurance']}/10")
     if message:
-        print(f'\n  💬 "{message}"')
+        print(f'\n  \U0001f4ac "{message}"')
     print("=" * 38)
 
 def render(state: dict, message: str = None):
@@ -481,27 +884,27 @@ def hatch_animation(state: dict):
             ["   .~~~~.", "  ( ???? )", "   `~~~~'"],
             ["   .~~~~.", "  ( *~~* )", "   `-||-'"],
             ["  .*~~~~*.", "  (* oo *)", "   `~~~~'"],
-            ["  .╱~~~~╲.", "  ╱ !! !! ╲", "   `~~~~'"],
+            ["  .\u2571~~~~\u2572.", "  \u2571 !! !! \u2572", "   `~~~~'"],
         ]
         for frame in frames:
             console.clear()
-            console.print("\n  [bold yellow]✦ Your egg is hatching! ✦[/]\n")
+            console.print("\n  [bold yellow]\u2726 Your egg is hatching! \u2726[/]\n")
             for line in frame:
                 console.print(f"  [bold white]{line}[/]")
             time.sleep(0.45)
         console.clear()
-        console.print(f"\n  [bold {color}]✦ {creature['name']} has hatched! ✦[/]")
-        console.print(f"  [bold {color}][{creature['rarity'].upper()}] — {creature['title']}[/]\n")
+        console.print(f"\n  [bold {color}]\u2726 {creature['name']} has hatched! \u2726[/]")
+        console.print(f"  [bold {color}][{creature['rarity'].upper()}] \u2014 {creature['title']}[/]\n")
         for line in creature["ascii"]["baby"]:
             console.print(f"  [bold {color}]{line}[/]")
         console.print(f'\n  [italic {color}]"...hello."[/]\n')
         console.print(f"  [dim]{creature['description']}[/]\n")
         time.sleep(2.5)
     else:
-        print("\n  ✦ Your egg is hatching! ✦\n")
+        print("\n  \u2726 Your egg is hatching! \u2726\n")
         time.sleep(1)
-        print(f"  ✦ {creature['name']} has hatched! ✦")
-        print(f"  [{creature['rarity'].upper()}] — {creature['title']}")
+        print(f"  \u2726 {creature['name']} has hatched! \u2726")
+        print(f"  [{creature['rarity'].upper()}] \u2014 {creature['title']}")
         for line in creature["ascii"]["baby"]:
             print(f"  {line}")
         print('\n  "...hello."\n')
@@ -512,39 +915,74 @@ def evolve_animation(state: dict, new_stage: str):
     color    = creature["color"]
     if HAS_RICH:
         console = Console()
-        console.print(f"\n  [bold {color}]✦ {creature['name']} evolved to {new_stage.upper()}! ✦[/]\n")
+        console.print(f"\n  [bold {color}]\u2726 {creature['name']} evolved to {new_stage.upper()}! \u2726[/]\n")
         for line in creature["ascii"][new_stage]:
             console.print(f"  [bold {color}]{line}[/]")
-        print()
+        whisper = random.choice(creature["quotes"]["idle"])
+        console.print(f'\n  [italic dim {color}]"{whisper}"[/]\n')
         time.sleep(2)
     else:
-        print(f"\n  ✦ {creature['name']} evolved to {new_stage.upper()}! ✦\n")
+        print(f"\n  \u2726 {creature['name']} evolved to {new_stage.upper()}! \u2726\n")
+        for line in creature["ascii"][new_stage]:
+            print(f"  {line}")
+        print(f'\n  "{random.choice(creature["quotes"]["idle"])}"\n')
         time.sleep(1.5)
 
 # ── Quotes ────────────────────────────────────────────────────────────────────
 
 def get_quote(state: dict, working: bool = False) -> str:
-    if get_stage(state["sessions"]) == "egg":
+    if not state.get("hatched"):
         return random.choice(["*muffled tapping*", "...", "*tap tap*", "Soon..."])
     creature = CREATURES[state["creature"]]
-    return random.choice(creature["quotes"]["working" if working else "idle"])
+    hour = datetime.now().hour
+    pool = creature["quotes"]["working" if working else "idle"]
+    # Slight time-of-day bias so repeats feel less mechanical
+    if not working and 5 <= hour < 12 and random.random() < 0.25:
+        morning = [q for q in pool if any(w in q.lower() for w in ("coffee", "compile", "slow", "wait", "patience"))]
+        if morning:
+            return random.choice(morning)
+    if not working and (hour >= 22 or hour < 5):
+        if random.random() < 0.2:
+            night = [q for q in pool if len(q) < 28]
+            if night:
+                return random.choice(night)
+    return random.choice(pool)
 
 # ── Commands ──────────────────────────────────────────────────────────────────
 
-def cmd_session(state: dict, tool: str = "unknown", silent: bool = False):
-    """Increment session. silent=True suppresses regular panel (animations still show)."""
-    old_stage = get_stage(state["sessions"])
+def cmd_session(state: dict, tool: str = "unknown", silent: bool = False, hook_mode: bool = False):
+    """Increment session. silent=True suppresses panel; hook_mode skips animations (Codex Stop hook)."""
+    old_stage = get_stage_for_state(state)
     state["sessions"] += 1
     state["tool_sessions"][tool] = state["tool_sessions"].get(tool, 0) + 1
     state["last_session"] = datetime.now().isoformat()
-    new_stage = get_stage(state["sessions"])
+
+    # Daily log
+    today = datetime.now().strftime("%Y-%m-%d")
+    daily = state.get("daily_log", {})
+    if today not in daily:
+        daily[today] = {"sessions": 0, "tools": {}}
+    daily[today]["sessions"] += 1
+    daily[today]["tools"][tool] = daily[today]["tools"].get(tool, 0) + 1
+    state["daily_log"] = daily
+
     save_state(state)
 
-    if not state.get("hatched") and state["sessions"] >= EGG_HATCH_AT:
+    if not state.get("hatched") and egg_should_hatch(state):
         state["hatched"] = True
         save_state(state)
-        hatch_animation(state)
-    elif state.get("hatched") and old_stage != new_stage:
+        if not hook_mode:
+            hatch_animation(state)
+            names = [n for _, n in STAGES if n != "egg"]
+            st = get_stage_for_state(state)
+            try:
+                t_i = names.index(st)
+            except ValueError:
+                t_i = 0
+            for j in range(1, t_i + 1):
+                evolve_animation(state, names[j])
+            save_state(state)
+    elif state.get("hatched") and old_stage != new_stage and not hook_mode:
         evolve_animation(state, new_stage)
 
     if not silent:
@@ -561,6 +999,19 @@ def cmd_watch(state: dict):
             os.system("cls")
         else:
             os.system("clear")
+
+    def _set_tty_title():
+        # Helps tmux wrappers find this pane via #{pane_title} on many setups
+        if IS_WINDOWS:
+            return
+        try:
+            if sys.stdout.isatty():
+                sys.stdout.write("\033]2;openbuddy watch\007")
+                sys.stdout.flush()
+        except (OSError, AttributeError):
+            pass
+
+    _set_tty_title()
     try:
         while True:
             _clear()
@@ -577,26 +1028,31 @@ def cmd_reset():
     Console().print(f"[bold yellow]{msg}[/]") if HAS_RICH else print(msg)
 
 def cmd_info(state: dict):
-    stage  = get_stage(state["sessions"])
+    stage  = get_stage_for_state(state)
+    prog   = progress_points(state)
     is_egg = not state.get("hatched", False)
     ts     = state.get("tool_sessions", {})
+    lt     = int(state.get("lifetime_tokens", 0) or 0)
     if HAS_RICH:
         c = Console()
         if is_egg:
-            c.print(f"[bold white]Stage:[/] EGG  Sessions: {state['sessions']}/{EGG_HATCH_AT}")
+            c.print(
+                f"[bold white]Stage:[/] EGG  sessions {state['sessions']}/{EGG_HATCH_AT}  "
+                f"tok {format_tokens(lt)}/{format_tokens(TOKENS_TO_HATCH)}"
+            )
         else:
             creature = CREATURES[state["creature"]]
             c.print(f"[bold]Name:[/]   {creature['name']}  [{creature['rarity'].upper()}]")
-            c.print(f"[bold]Stage:[/]  {stage}  (total: {state['sessions']} sessions)")
+            c.print(f"[bold]Stage:[/]  {stage}  (progress {prog}: sess {state['sessions']}, {format_tokens(lt)} tok)")
             if ts:
                 c.print(f"[bold]Tools:[/]  {_tool_summary(state)}")
     else:
         if is_egg:
-            print(f"Stage: EGG  Sessions: {state['sessions']}/{EGG_HATCH_AT}")
+            print(f"Stage: EGG  sessions {state['sessions']}/{EGG_HATCH_AT}  tok {lt}/{TOKENS_TO_HATCH}")
         else:
             creature = CREATURES[state["creature"]]
             print(f"Name:  {creature['name']}  [{creature['rarity'].upper()}]")
-            print(f"Stage: {stage}  ({state['sessions']} sessions)")
+            print(f"Stage: {stage}  (progress {prog}, {state['sessions']} sess, {lt} tok)")
             if ts:
                 print(f"Tools: {_tool_summary(state)}")
 
@@ -604,16 +1060,384 @@ def cmd_list():
     rarity_colors = {"common": "white", "rare": "bright_cyan", "legendary": "bright_yellow"}
     if HAS_RICH:
         c = Console()
-        c.print("\n[bold]Available Creatures:[/]\n")
+        c.print("\n[bold]Available Creatures (10):[/]\n")
         for data in CREATURES.values():
             rc = rarity_colors[data["rarity"]]
             c.print(f"  [{rc}]{data['name']:12}[/]  [{rc}]{data['rarity'].upper():9}[/]  [dim]{data['title']}[/]")
         c.print()
     else:
-        print("\nAvailable Creatures:\n")
+        print("\nAvailable Creatures (10):\n")
         for data in CREATURES.values():
             print(f"  {data['name']:12}  {data['rarity'].upper():9}  {data['title']}")
         print()
+
+def cmd_stats(state: dict):
+    """Show session statistics dashboard."""
+    daily = state.get("daily_log", {})
+    ts    = state.get("tool_sessions", {})
+    sessions = state["sessions"]
+    created  = state.get("created_at", "")
+
+    today_str = datetime.now().strftime("%Y-%m-%d")
+    week_ago  = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")
+
+    today_sessions = daily.get(today_str, {}).get("sessions", 0)
+    week_sessions  = sum(
+        v.get("sessions", 0) for d, v in daily.items() if d >= week_ago
+    )
+    streak = 0
+    d = datetime.now()
+    while True:
+        ds = d.strftime("%Y-%m-%d")
+        if ds in daily and daily[ds].get("sessions", 0) > 0:
+            streak += 1
+            d -= timedelta(days=1)
+        else:
+            break
+
+    if HAS_RICH:
+        c = Console()
+        c.print()
+
+        # Header
+        creature = CREATURES.get(state.get("creature", ""), {})
+        cname = creature.get("name", "???") if state.get("hatched") else "???"
+        c.print(Panel(
+            f"[bold]\U0001f4ca {cname}'s Stats Dashboard[/]",
+            border_style="bright_cyan", width=44,
+        ))
+
+        # Overview
+        tbl = Table(show_header=False, box=None, padding=(0, 2))
+        tbl.add_column(style="bold")
+        tbl.add_column(style="bright_white")
+        tbl.add_row("Total sessions", str(sessions))
+        lt_st = int(state.get("lifetime_tokens", 0) or 0)
+        if lt_st > 0:
+            tbl.add_row("Tokscale (stored)", format_tokens(lt_st))
+        tbl.add_row("Progress pts", str(progress_points(state)))
+        tbl.add_row("Today", str(today_sessions))
+        tbl.add_row("This week", str(week_sessions))
+        tbl.add_row("\U0001f525 Streak", f"{streak} day(s)")
+        if created:
+            try:
+                age = (datetime.now() - datetime.fromisoformat(created)).days
+                tbl.add_row("Age", f"{age} day(s)")
+            except ValueError:
+                pass
+        c.print(tbl)
+
+        # Tool breakdown
+        if ts:
+            c.print("\n[bold]Sessions by tool:[/]")
+            max_val = max(ts.values()) if ts else 1
+            for tool, count in sorted(ts.items(), key=lambda x: -x[1]):
+                bar_len = round((count / max_val) * 16)
+                bar = "\u2588" * bar_len + "\u2591" * (16 - bar_len)
+                c.print(f"  {tool:12} {bar} {count}")
+
+        # Weekly activity (last 7 days)
+        c.print("\n[bold]Last 7 days:[/]")
+        days_line = "  "
+        bars_line = "  "
+        for i in range(6, -1, -1):
+            d = datetime.now() - timedelta(days=i)
+            ds = d.strftime("%Y-%m-%d")
+            dn = d.strftime("%a")[:2]
+            cnt = daily.get(ds, {}).get("sessions", 0)
+            if cnt == 0:
+                block = "\u2591"
+            elif cnt <= 2:
+                block = "\u2592"
+            elif cnt <= 5:
+                block = "\u2593"
+            else:
+                block = "\u2588"
+            days_line += f" {dn}"
+            bars_line += f"  {block}"
+        c.print(days_line)
+        c.print(bars_line)
+        c.print()
+    else:
+        print(f"\n{'=' * 40}")
+        print(f"  \U0001f4ca Stats Dashboard")
+        print(f"{'=' * 40}")
+        lt_st = int(state.get("lifetime_tokens", 0) or 0)
+        print(f"  Total:   {sessions} sessions  progress {progress_points(state)}")
+        if lt_st > 0:
+            print(f"  Tokscale stored: {lt_st}")
+        print(f"  Today:   {today_sessions}")
+        print(f"  Week:    {week_sessions}")
+        print(f"  Streak:  {streak} day(s)")
+        if ts:
+            print(f"\n  Sessions by tool:")
+            for tool, count in sorted(ts.items(), key=lambda x: -x[1]):
+                print(f"    {tool:12} {count}")
+        print(f"{'=' * 40}\n")
+
+def cmd_tokens(state: dict, apply_sync: bool = False):
+    """Show tokscale token usage; with apply_sync, merge all-time totals into progress (level-up)."""
+    creature = CREATURES.get(state.get("creature", ""), {})
+    cname = creature.get("name", "???") if state.get("hatched") else "???"
+
+    if HAS_RICH:
+        Console().print(f"\n[bold]\U0001f50d Fetching token data from tokscale...[/]")
+
+    data = get_tokscale_data("--today")
+
+    if data is None:
+        msg = "tokscale failed (install Node, run: npx tokscale --help). npm i -g tokscale optional."
+        if HAS_RICH:
+            Console().print(f"[dim]{msg}[/]")
+        else:
+            print(f"  {msg}")
+        return
+
+    p = parse_tokscale_report(data)
+    total_input = p["total_input"]
+    total_output = p["total_output"]
+    total_tokens = p["total_xp"]
+    total_cost = p["total_cost"]
+    platforms = p["platforms"]
+
+    if HAS_RICH:
+        c = Console()
+        if total_tokens > 500_000:
+            mood = "\U0001f92f"
+            react = random.choice(creature.get("quotes", {}).get("fed", ["*stuffed*"]))
+        elif total_tokens > 100_000:
+            mood = "\U0001f60b"
+            react = random.choice(creature.get("quotes", {}).get("fed", ["*well fed*"]))
+        elif total_tokens > 0:
+            mood = "\U0001f642"
+            react = "A light snack of tokens..."
+        else:
+            mood = "\U0001f634"
+            react = "No tokens today... hungry..."
+
+        c.print(Panel(
+            f"[bold]{mood} {cname}'s Token Report (Today)[/]",
+            border_style="bright_yellow", width=44,
+        ))
+
+        tbl = Table(show_header=False, box=None, padding=(0, 2))
+        tbl.add_column(style="bold")
+        tbl.add_column(style="bright_white")
+        tbl.add_row("\U0001f4e5 Input",  format_tokens(total_input))
+        tbl.add_row("\U0001f4e4 Output", format_tokens(total_output))
+        if p.get("total_reasoning"):
+            tbl.add_row("\U0001f9e0 Reasoning", format_tokens(p["total_reasoning"]))
+        tbl.add_row("\U0001f4ca Total (XP)",  format_tokens(total_tokens))
+        if total_cost > 0:
+            tbl.add_row("\U0001f4b0 Cost", format_cost(total_cost))
+        c.print(tbl)
+
+        if platforms:
+            c.print("\n[bold]By client:[/]")
+            max_val = max(platforms.values()) if platforms else 1
+            for plat, tok in sorted(platforms.items(), key=lambda x: -x[1]):
+                bar_len = round((tok / max_val) * 14)
+                bar = "\u2588" * bar_len + "\u2591" * (14 - bar_len)
+                c.print(f"  {plat:12} {bar} {format_tokens(tok)}")
+
+        c.print(f'\n  \U0001f4ac [italic]"{react}"[/]')
+        c.print()
+    else:
+        print(f"\n  Today — in {format_tokens(total_input)} / out {format_tokens(total_output)} / total {format_tokens(total_tokens)}")
+
+    if apply_sync:
+        if HAS_RICH:
+            Console().print("[bold]\U0001f504 Syncing all-time totals into buddy progress...[/]")
+        all_d = get_tokscale_data()
+        if all_d is None:
+            msg = "Could not fetch all-time tokscale JSON for sync."
+            (Console().print(f"[yellow]{msg}[/]") if HAS_RICH else print(msg))
+            return
+        life = parse_tokscale_report(all_d)
+        apply_tokscale_to_state(state, life["total_xp"], run_animations=True)
+        if HAS_RICH:
+            Console().print(
+                f"[dim]Stored lifetime XP: {format_tokens(state['lifetime_tokens'])} "
+                f"(progress {progress_points(state)}).[/]\n"
+            )
+        else:
+            print(f"  Synced: {state['lifetime_tokens']} tok → progress {progress_points(state)}")
+        render(state, message=get_quote(state))
+
+
+def cmd_sync(state: dict, quiet: bool = False):
+    """Fetch tokscale all-time usage and update level progress only (no today table)."""
+    if not quiet and HAS_RICH:
+        Console().print("[bold]\U0001f504 Syncing tokscale (all-time) → openbuddy...[/]")
+    all_d = get_tokscale_data()
+    if all_d is None:
+        if quiet:
+            return
+        msg = "tokscale failed. Need Node/npx and local tokscale data."
+        (Console().print(f"[yellow]{msg}[/]") if HAS_RICH else print(msg))
+        return
+    life = parse_tokscale_report(all_d)
+    apply_tokscale_to_state(state, life["total_xp"], run_animations=not quiet)
+    if quiet:
+        return
+    if HAS_RICH:
+        Console().print(
+            f"[green]OK[/] — stored {format_tokens(state['lifetime_tokens'])}, progress {progress_points(state)}.\n"
+        )
+    else:
+        print(f"OK — {state['lifetime_tokens']} tok, progress {progress_points(state)}")
+    render(state, message=get_quote(state))
+
+# ── Codex CLI hooks (SessionStart additionalContext — inside Codex, not a side window) ──
+
+CODEX_HOOKS_FILE = Path.home() / ".codex" / "hooks.json"
+
+
+def format_codex_additional_context(state: dict) -> str:
+    """Short text injected into Codex as developer additionalContext (SessionStart hook)."""
+    lt = int(state.get("lifetime_tokens", 0) or 0)
+    if not state.get("hatched"):
+        return (
+            f"[openbuddy] Egg — sessions {state.get('sessions', 0)}/{EGG_HATCH_AT}, "
+            f"tokens {format_tokens(lt)}/{format_tokens(TOKENS_TO_HATCH)} (tokscale).\n"
+            f"CLI: openbuddy show  |  openbuddy sync  |  openbuddy codex-install-hook"
+        )
+    c = CREATURES[state["creature"]]
+    st = get_stage_for_state(state)
+    prog = progress_points(state)
+    nxt = get_next_stage_at(prog)
+    nxt_s = f" next->{nxt}" if nxt else ""
+    tools = _tool_summary(state)
+    tools_s = f"\nTools: {tools}" if tools else ""
+    return (
+        f"[openbuddy] {c['name']} — {st} — progress {prog}{nxt_s}\n"
+        f"{c['title']}{tools_s}\n"
+        f"CLI: openbuddy show  |  openbuddy sync"
+    )
+
+
+def cmd_codex_hook_session_start() -> None:
+    """Codex SessionStart hook: JSON on stdout with additionalContext."""
+    try:
+        sys.stdin.read()
+    except Exception:
+        pass
+    state = load_state()
+    ctx = format_codex_additional_context(state)
+    print(
+        json.dumps(
+            {
+                "hookSpecificOutput": {
+                    "hookEventName": "SessionStart",
+                    "additionalContext": ctx,
+                }
+            },
+            ensure_ascii=False,
+        )
+    )
+
+
+def cmd_codex_hook_stop() -> None:
+    """Codex Stop hook: +1 session per finished turn (optional; do not use with codex PATH wrapper)."""
+    try:
+        sys.stdin.read()
+    except Exception:
+        pass
+    state = load_state()
+    cmd_session(state, "codex", silent=True, hook_mode=True)
+    print(json.dumps({"continue": True}))
+
+
+def _hook_cmd_has_openbuddy_marker(obj) -> bool:
+    """True if serialized hook mentions codex-hook-session-start."""
+    try:
+        return "codex-hook-session-start" in json.dumps(obj)
+    except (TypeError, ValueError):
+        return False
+
+
+def cmd_codex_install_hook() -> None:
+    """Merge SessionStart hook into ~/.codex/hooks.json (absolute openbuddy path)."""
+    CODEX_HOOKS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    ob = Path(__file__).resolve()
+    py = sys.executable
+    argv_cmd = [str(py), str(ob), "codex-hook-session-start"]
+
+    # OpenAI docs shape: { "hooks": { "SessionStart": [ { "matcher", "hooks": [...] } ] } } }
+    entry_official = {
+        "matcher": "startup|resume",
+        "hooks": [
+            {
+                "type": "command",
+                "command": (
+                    subprocess.list2cmdline(argv_cmd)
+                    if IS_WINDOWS
+                    else f"{shlex.quote(py)} {shlex.quote(str(ob))} codex-hook-session-start"
+                ),
+                "statusMessage": "openbuddy",
+            }
+        ],
+    }
+
+    # Alternate shape (seen in the wild): { "hooks": [ { "event": "SessionStart", "handler": {...} } ] }
+    entry_array = {
+        "event": "SessionStart",
+        "handler": {
+            "command": argv_cmd,
+            "statusMessage": "openbuddy",
+        },
+    }
+
+    data: dict = {}
+    if CODEX_HOOKS_FILE.exists():
+        try:
+            data = json.loads(CODEX_HOOKS_FILE.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            print(f"warning: could not parse {CODEX_HOOKS_FILE}, resetting hooks key", file=sys.stderr)
+            data = {}
+
+    hooks = data.get("hooks")
+
+    if isinstance(hooks, list):
+        for item in hooks:
+            if _hook_cmd_has_openbuddy_marker(item):
+                print(f"Already configured (array hooks): {CODEX_HOOKS_FILE}")
+                _codex_install_hook_footer()
+                return
+        hooks.append(entry_array)
+        data["hooks"] = hooks
+
+    elif isinstance(hooks, dict):
+        ss = hooks.setdefault("SessionStart", [])
+        if not isinstance(ss, list):
+            ss = []
+            hooks["SessionStart"] = ss
+        for group in ss:
+            for h in group.get("hooks", []):
+                if "codex-hook-session-start" in (h.get("command") or ""):
+                    print(f"Already configured: {CODEX_HOOKS_FILE}")
+                    _codex_install_hook_footer()
+                    return
+        ss.append(entry_official)
+        data["hooks"] = hooks
+
+    else:
+        data["hooks"] = {"SessionStart": [entry_official]}
+
+    CODEX_HOOKS_FILE.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    print(f"Wrote: {CODEX_HOOKS_FILE}")
+    _codex_install_hook_footer()
+
+
+def _codex_install_hook_footer() -> None:
+    cfg = Path.home() / ".codex" / "config.toml"
+    if cfg.is_file() and "codex_hooks" in cfg.read_text(encoding="utf-8", errors="replace"):
+        print("config.toml: codex_hooks already present.")
+    else:
+        print("\nAdd to ~/.codex/config.toml:\n[features]\ncodex_hooks = true\n")
+    print("Note: Codex hooks may be disabled on Windows (OpenAI); WSL/macOS/Linux often work.")
+    print("This hook only SHOWS the buddy in-session; use openbuddy-wrap codex for +1 per launch.")
+
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
@@ -624,16 +1448,56 @@ Commands:
   show            Show your buddy (default)
   session [tool]  Increment session count, optionally tag tool name
   watch           Live refresh mode (for tmux split pane)
+  stats           Show session statistics dashboard
+  wrap-preset [ai] Run openbuddy-wrap --preset (gemini/재미나이, codex, opencode, … — needs bash / Git Bash)
+  codex-install-hook   Add Codex SessionStart hook → buddy summary inside Codex (not a side panel)
+  codex-hook-session-start   For hooks.json only (reads stdin, prints SessionStart JSON)
+  codex-hook-stop          Optional: +1 session each Codex turn (use instead of wrapper, not both)
+  tokens          Today's token usage via tokscale (npx tokscale --today --json)
+  tokens --apply  Same as tokens, then sync all-time tokscale totals into level progress
+  sync            Only sync all-time tokscale → progress (hatch / evolve from tokens)
+  sync --quiet    Same, no banner/panel (for background / wrappers)
   reset           Delete current buddy and start a new egg
   info            Show brief buddy info
   list            List all creature types
 
+Progress = max(sessions, lifetime_tokens // 100000). Egg hatches at 3 sessions OR 250k tok (synced).
+Env: OPENBUDDY_AUTO_SYNC=1 (wrapper runs sync --quiet after each session), TOKENS_PER_PROGRESS_UNIT, TOKENS_TO_HATCH.
+
 Examples:
   openbuddy
+  openbuddy codex-install-hook
+  openbuddy wrap-preset
   openbuddy session codex
-  openbuddy session aider
+  openbuddy stats
+  openbuddy tokens
+  openbuddy tokens --apply
+  openbuddy sync
   openbuddy watch
 """
+
+
+def cmd_wrap_preset(args: list[str]) -> None:
+    """Delegate to openbuddy-wrap --preset ai (Gemini, Codex, OpenCode, Claude, …)."""
+    preset = "ai"
+    if len(args) > 1 and not str(args[1]).startswith("-"):
+        preset = args[1]
+    here = Path(__file__).resolve().parent
+    wrap = here / "openbuddy-wrap"
+    if not wrap.is_file():
+        wrap = Path.home() / ".local/bin/openbuddy-wrap"
+    if not wrap.is_file():
+        print("openbuddy-wrap not found next to openbuddy or in ~/.local/bin", file=sys.stderr)
+        sys.exit(1)
+    bash = shutil.which("bash")
+    if not bash:
+        print(
+            "bash not in PATH (install Git Bash). Or run: openbuddy-wrap-preset.cmd",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    sys.exit(subprocess.call([bash, str(wrap), "--preset", preset]))
+
 
 def main():
     args = sys.argv[1:]
@@ -641,6 +1505,18 @@ def main():
 
     if cmd in ("-h", "--help", "help"):
         print(USAGE)
+        return
+    if cmd == "wrap-preset":
+        cmd_wrap_preset(args)
+        return
+    if cmd == "codex-install-hook":
+        cmd_codex_install_hook()
+        return
+    if cmd == "codex-hook-session-start":
+        cmd_codex_hook_session_start()
+        return
+    if cmd == "codex-hook-stop":
+        cmd_codex_hook_stop()
         return
     if cmd == "reset":
         cmd_reset()
@@ -659,6 +1535,12 @@ def main():
         cmd_watch(state)
     elif cmd == "info":
         cmd_info(state)
+    elif cmd == "stats":
+        cmd_stats(state)
+    elif cmd == "tokens":
+        cmd_tokens(state, apply_sync="--apply" in args[1:])
+    elif cmd == "sync":
+        cmd_sync(state, quiet="--quiet" in args[1:] or "-q" in args[1:])
     else:
         cmd_show(state)
 
