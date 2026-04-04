@@ -2,8 +2,8 @@
 # openbuddy Gemini CLI patch
 # Adds BuddyPanel to Gemini CLI's Ink UI
 #
-# Linux:   sudo bash gemini-patch.sh
-# Windows: bash gemini-patch.sh  (no sudo needed)
+# Linux:   sudo bash openbuddy-patch.sh
+# Windows: bash openbuddy-patch.sh  (no sudo needed)
 
 set -euo pipefail
 
@@ -55,4 +55,4 @@ echo "  ✓ Patched DefaultAppLayout.js"
 
 echo ""
 echo "  Done! Run 'gemini' to see your buddy."
-echo "  To revert: bash $SCRIPT_DIR/gemini-unpatch.sh"
+echo "  To revert: bash $SCRIPT_DIR/openbuddy-unpatch.sh"

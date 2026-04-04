@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+# openbuddy-launcher: Ultra-robust execution with error capture and TTY stabilization.
+
+TOOL_NAME="$1"
+REAL_BIN="$2"
+shift 2
+
+LOG_FILE="/tmp/openbuddy_${TOOL_NAME}.log"
+echo "--- Launching $TOOL_NAME ---" > "$LOG_FILE"
+
+# 1. TMUX 포커스 이벤트 강제 차단 (자동입력 방지 핵심)
+if [[ -n "${TMUX:-}" ]]; then
+    tmux set-option -p focus-events off 2>/dev/null || true
+fi
+
+# 2. 터미널 제어 문자 초기화
+# 포커스 보고 및 브래킷 페이스트 모드 강제 종료
+printf '\e[?1004l\e[?2004l' 2>/dev/null || true
+
+# 3. 지연 버디 실행 (배경)
+if [[ -n "${TMUX:-}" ]]; then
+    (
+        # 도구가 로드되는 동안 잠시 대기 (0.5초면 충분할 듯)
+        sleep 0.5
+        # 이미 분할되지 않은 경우에만 분할
+        if [[ $(tmux list-panes | wc -l) -eq 1 ]]; then
+            tmux split-window -h -b -d -l 31 "openbuddy watch" 2>/dev/null || true
+            # 분할 후에도 다시 한번 포커스 차단
+            tmux set-option -p focus-events off 2>/dev/null || true
+        fi
+    ) &
+fi
+
+# 4. 강력한 입력 버퍼 비우기
+_flush() {
+    stty -echo 2>/dev/null || true
+    sleep 0.2
+    # 파이썬으로 커널 레벨의 stdin 버퍼를 즉시 비움
+    python3 -c 'import sys, termios; termios.tcflush(sys.stdin, termios.TCIFLUSH)' 2>/dev/null || true
+    # 남은 찌꺼기 제거
+    while read -r -t 0.05 -n 10000 _trash; do :; done 2>/dev/null || true
+    stty echo 2>/dev/null || true
+}
+_flush
+
+# 5. 실행 (오류 캡처)
+# opencode의 경우 TERM을 xterm으로 고정하여 호환성 확보
+export TERM=xterm-256color
+set +e
+"$REAL_BIN" "$@" 2> >(tee -a "$LOG_FILE" >&2)
+EXIT_CODE=$?
+set -e
+
+# 6. 종료 처리 및 오류 보고
+if [[ $EXIT_CODE -ne 0 ]]; then
+    echo -e "\n\033[1;31m[openbuddy] 도구 실행 실패 (Code: $EXIT_CODE)\033[0m"
+    echo -e "오류 로그 확인: \033[1;33mcat $LOG_FILE\033[0m"
+    echo -e "\n--- 에러 내용 ---"
+    tail -n 10 "$LOG_FILE"
+    echo -e "------------------\n"
+    read -p "[엔터를 누르면 창이 닫힙니다]" _unused
+fi
+
+exit $EXIT_CODE

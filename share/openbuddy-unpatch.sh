@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # openbuddy Gemini CLI unpatch
 #
-# Linux:   sudo bash gemini-unpatch.sh
-# Windows: bash gemini-unpatch.sh
+# Linux:   sudo bash openbuddy-unpatch.sh
+# Windows: bash openbuddy-unpatch.sh
 
 set -euo pipefail
 

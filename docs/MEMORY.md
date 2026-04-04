@@ -16,8 +16,8 @@ Tamagotchi 스타일 ASCII 버디를 CLI 코딩 툴(Codex, Gemini, opencode 등)
 | `~/.local/bin/openbuddy-wrap` | 래퍼 생성기 (wrap/--list/--remove) |
 | `~/.local/share/openbuddy/BuddyPanel.js` | Gemini CLI용 Ink 컴포넌트 |
 | `~/.local/share/openbuddy/DefaultAppLayout.patched.js` | Gemini CLI 레이아웃 패치 |
-| `~/.local/share/openbuddy/gemini-patch.sh` | Gemini 패치 sudo 스크립트 |
-| `~/.local/share/openbuddy/gemini-unpatch.sh` | Gemini 패치 롤백 스크립트 |
+| `~/.local/share/openbuddy/openbuddy-patch.sh` | Gemini 패치 sudo 스크립트 |
+| `~/.local/share/openbuddy/openbuddy-unpatch.sh` | Gemini 패치 롤백 스크립트 |
 
 ## 생성된 래퍼들
 
@@ -35,7 +35,7 @@ Tamagotchi 스타일 ASCII 버디를 CLI 코딩 툴(Codex, Gemini, opencode 등)
 
 BuddyPanel.js가 `useEffect()`로 매 Ink 렌더 후 ANSI cursor-address로 우측 패널 직접 그림.
 `getBuddyWidth(terminalWidth)` exported → DefaultAppLayout이 mainW 축소해 공간 예약.
-Gemini 업그레이드 시 `sudo bash gemini-patch.sh` 재실행 필요.
+Gemini 업그레이드 시 `sudo bash openbuddy-patch.sh` 재실행 필요.
 
 ## 미해결 문제 (2026-04-01 기준)
 
@@ -52,7 +52,7 @@ Gemini 업그레이드 시 `sudo bash gemini-patch.sh` 재실행 필요.
 
 - `openbuddy-wrap --list`가 자기 자신을 표시하던 버그: heredoc 안에 마커 문자열이 있어 `grep`에 걸림 → `head -3` 로 해결
 - Ink의 `position: absolute` + `overflow: hidden` 클리핑 → ANSI stdout 직접 쓰기로 해결
-- `gemini-patch.sh`에서 `$HOME`이 sudo로 `/root`로 바뀌는 문제 → `npm root -g` 자동 감지로 해결
+- `openbuddy-patch.sh`에서 `$HOME`이 sudo로 `/root`로 바뀌는 문제 → `npm root -g` 자동 감지로 해결
 - Windows cp949 인코딩에서 유니코드 심볼(✦ 등) 크래시 → `sys.stdout.reconfigure(encoding="utf-8")` 추가
 - Windows에서 bash 래퍼(확장자 없음)는 PowerShell/cmd에서 안 잡힘 → `.cmd` 래퍼 동시 생성으로 해결
 - Windows mintty에서 python PATH 누락으로 즉시 종료 → PowerShell `Start-Process`로 전환
