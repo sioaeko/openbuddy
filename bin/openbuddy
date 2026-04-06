@@ -836,6 +836,20 @@ def _term_cols() -> int:
         return 80
 
 
+def _watch_interval_seconds() -> float:
+    """Seconds between watch refreshes (env OPENBUDDY_WATCH_INTERVAL, default 6)."""
+    raw = os.environ.get("OPENBUDDY_WATCH_INTERVAL", "6")
+    try:
+        v = float(str(raw).strip())
+    except (TypeError, ValueError):
+        return 6.0
+    if v < 0.5:
+        return 0.5
+    if v > 3600:
+        return 3600.0
+    return v
+
+
 def _want_compact(term_width: Optional[int]) -> bool:
     """Narrow tmux panes: skip stats/description and use shorter ASCII."""
     ev = os.environ.get("OPENBUDDY_COMPACT")
@@ -1238,7 +1252,7 @@ def cmd_watch(state: dict):
             _clear()
             state = load_state()
             render(state, message=get_quote(state), term_width=_term_cols())
-            time.sleep(6)
+            time.sleep(_watch_interval_seconds())
     except KeyboardInterrupt:
         pass
 
@@ -1730,7 +1744,7 @@ Usage: openbuddy [command] [tool]
 Commands:
   show            Show your buddy (default)
   session [tool]  Increment session count, optionally tag tool name
-  watch           Live refresh mode (for tmux split pane)
+  watch           Live refresh mode (for tmux split pane; interval: OPENBUDDY_WATCH_INTERVAL)
   stats           Show session statistics dashboard
   wrap-preset [ai] Run openbuddy-wrap --preset (gemini/재미나이, codex, opencode, … — needs bash / Git Bash)
   codex-install-hook   Add Codex SessionStart hook → buddy summary inside Codex (not a side panel)
@@ -1746,7 +1760,8 @@ Commands:
 
 Progress = max(sessions, lifetime_tokens // 100000). Egg hatches at 3 sessions OR 250k tok (synced).
 Env: OPENBUDDY_AUTO_SYNC, TOKENS_PER_PROGRESS_UNIT, TOKENS_TO_HATCH.
-Wrapper/tmux: OPENBUDDY_TMUX_PCT (default 10), OPENBUDDY_TMUX_VERTICAL (buddy below tool), OPENBUDDY_COMPACT (narrow watch UI; auto if pane < 48 cols).
+Wrapper/tmux: OPENBUDDY_TMUX_PCT (default 10), OPENBUDDY_TMUX_V_PCT (vertical split height; default 12 if unset), OPENBUDDY_TMUX_VERTICAL (buddy below tool), OPENBUDDY_COMPACT (narrow watch UI; auto if pane < 48 cols).
+Watch: OPENBUDDY_WATCH_INTERVAL (seconds between refreshes, default 6, clamp 0.5–3600).
 
 Examples:
   openbuddy

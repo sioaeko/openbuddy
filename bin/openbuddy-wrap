@@ -14,7 +14,8 @@
 #
 # Optional env (runtime, when using generated wrappers):
 #   OPENBUDDY_NO_TMUX=1          — skip auto-spawned tmux session; run tool in current tty, then openbuddy show
-#   OPENBUDDY_TMUX_PCT=10        — size % for the buddy pane (-h: width, -v: height; tmux split -p)
+#   OPENBUDDY_TMUX_PCT=10        — size % for horizontal buddy pane (width; tmux split -h -p)
+#   OPENBUDDY_TMUX_V_PCT=12      — optional override for vertical split only (height; split -v -p); if unset, uses OPENBUDDY_TMUX_PCT or 12
 #   OPENBUDDY_TMUX_VERTICAL=1    — split below the tool (full editor width; buddy is a bottom strip)
 #   OPENBUDDY_COMPACT=1          — force narrow-panel layout (else auto when pane < 48 cols)
 #   OPENBUDDY_NO_PAUSE_AFTER=1   — do not wait for Enter after openbuddy show (non-tmux / after tool exits)
@@ -124,7 +125,7 @@ if [[ -x "\$OPENBUDDY_BIN" && -z "\${OPENBUDDY_WRAPPED:-}" ]]; then
         fi
         if [[ "\$_ob_skip" -eq 0 ]]; then
             if [[ -n "\${OPENBUDDY_TMUX_VERTICAL:-}" ]]; then
-                tmux split-window -v -p "\${OPENBUDDY_TMUX_PCT:-10}" -d "\$OPENBUDDY_BIN watch" 2>/dev/null || true
+                tmux split-window -v -p "\${OPENBUDDY_TMUX_V_PCT:-\${OPENBUDDY_TMUX_PCT:-12}}" -d "\$OPENBUDDY_BIN watch" 2>/dev/null || true
             else
                 tmux split-window -h -p "\${OPENBUDDY_TMUX_PCT:-10}" -d "\$OPENBUDDY_BIN watch" 2>/dev/null || true
             fi
@@ -142,7 +143,7 @@ if [[ -x "\$OPENBUDDY_BIN" && -z "\${OPENBUDDY_WRAPPED:-}" ]]; then
             exec tmux new-session -s "\$_sess" \
                 -x "\$(tput cols)" -y "\$(tput lines)" \
                 "OPENBUDDY_WRAPPED=1 \$REAL_BIN \$(printf '%q ' \"\$@\"); echo; \$OPENBUDDY_BIN show; if [ -z \${OPENBUDDY_NO_PAUSE_AFTER:-} ] && [ -z \${CI:-} ]; then echo >&2; read -r -p '[openbuddy] Press Enter to close… ' _ob_x < /dev/tty 2>/dev/null || true; fi" \; \
-                split-window -v -p "\${OPENBUDDY_TMUX_PCT:-10}" -d "\$OPENBUDDY_BIN watch" \; \
+                split-window -v -p "\${OPENBUDDY_TMUX_V_PCT:-\${OPENBUDDY_TMUX_PCT:-12}}" -d "\$OPENBUDDY_BIN watch" \; \
                 select-pane -t 0
         else
             exec tmux new-session -s "\$_sess" \
