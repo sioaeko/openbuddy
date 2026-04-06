@@ -41,8 +41,9 @@ Gemini 업그레이드 시 `sudo bash openbuddy-patch.sh` 재실행 필요.
 
 ## 미해결 문제 (2026-04-01 기준)
 
-**Codex / OpenCode에서 버디 패인이 안 뜨는 경우 (PATH):**
-- `openbuddy-launcher`가 `openbuddy watch`를 **PATH로만** 호출하면, tmux 새 패인의 기본 셸 환경에 `~/.local/bin`이 없어 실패할 수 있음 → 런처에서 `OPENBUDDY_BIN` 또는 `~/.local/bin/openbuddy` **절대 경로**로 `split-window` 실행하도록 수정.
+**Codex / OpenCode에서 버디 패인이 안 뜨는 경우:**
+- `bin/openbuddy`가 **실행 비트 없이(644)** 체크아웃되면 `tmux split-window … openbuddy watch`가 즉시 실패 → Git에서 **100755**로 두고, 런처는 `python3 /path/to/openbuddy watch`로 실행.
+- 예전: PATH만 문제였을 때는 절대 경로로 `openbuddy` 호출하도록 했음.
 
 **opencode 래퍼에서 opencode가 죽는 문제:**
 - 증상: `opencode` 실행 시 tmux 세션 생성되지만 opencode 패인이 바로 종료, openbuddy watch 패인만 남음

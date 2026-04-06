@@ -8,8 +8,9 @@ shift 2
 LOG_FILE="/tmp/openbuddy_${TOOL_NAME}.log"
 echo "--- Launching $TOOL_NAME ---" > "$LOG_FILE"
 
-# openbuddy 바이너리 (tmux 새 패인은 로그인 셸이 아니라 PATH에 ~/.local/bin이 없을 수 있음)
+# openbuddy 스크립트 — tmux 새 패인은 PATH가 빈 경우가 많고, repo에 644로 두는 환경도 있어 python3로 실행
 OB="${OPENBUDDY_BIN:-$HOME/.local/bin/openbuddy}"
+PY3="${OPENBUDDY_PYTHON:-$(command -v python3)}"
 
 # 1. TMUX 포커스 이벤트 강제 차단 (자동입력 방지 핵심)
 if [[ -n "${TMUX:-}" ]]; then
@@ -27,12 +28,12 @@ if [[ -n "${TMUX:-}" ]]; then
         sleep 0.5
         # 이미 분할되지 않은 경우에만 분할
         if [[ $(tmux list-panes | wc -l) -eq 1 ]]; then
-            if [[ -x "$OB" ]]; then
-                if ! tmux split-window -h -b -d -l "${OPENBUDDY_TMUX_COLS:-20}" -- "$OB" watch 2>>"$LOG_FILE"; then
+            if [[ -f "$OB" && -n "$PY3" ]]; then
+                if ! tmux split-window -h -b -d -l "${OPENBUDDY_TMUX_COLS:-20}" -- "$PY3" "$OB" watch 2>>"$LOG_FILE"; then
                     echo "[openbuddy-launcher] tmux split-window failed (see $LOG_FILE)" >>"$LOG_FILE"
                 fi
             else
-                echo "[openbuddy-launcher] openbuddy not executable: $OB" >>"$LOG_FILE"
+                echo "[openbuddy-launcher] missing python3 or openbuddy script: PY3=$PY3 OB=$OB" >>"$LOG_FILE"
             fi
             # 분할 후에도 다시 한번 포커스 차단
             tmux set-option -p focus-events off 2>/dev/null || true
