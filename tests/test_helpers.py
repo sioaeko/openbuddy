@@ -116,5 +116,11 @@ class TestCompactAndPanelWidth(unittest.TestCase):
         self.assertEqual(ob._panel_width(30), 29)
 
 
+class TestDoctor(unittest.TestCase):
+    def test_doctor_returns_int(self) -> None:
+        rc = ob.cmd_doctor()
+        self.assertIn(rc, (0, 1))
+
+
 if __name__ == "__main__":
     unittest.main()

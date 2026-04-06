@@ -234,6 +234,7 @@ openbuddy sync
 openbuddy sync --quiet
 openbuddy wrap-preset
 openbuddy codex-install-hook
+openbuddy doctor    # 또는 openbuddy check — Python·tmux·경로·rich 점검
 openbuddy reset
 openbuddy --help
 ```

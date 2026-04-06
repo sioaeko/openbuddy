@@ -234,6 +234,7 @@ openbuddy sync
 openbuddy sync --quiet
 openbuddy wrap-preset
 openbuddy codex-install-hook
+openbuddy doctor    # or: openbuddy check — verify Python, tmux, paths, rich
 openbuddy reset
 openbuddy --help
 ```

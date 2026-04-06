@@ -1310,6 +1310,107 @@ def cmd_reset():
     msg = "openbuddy reset. A new egg awaits..."
     Console().print(f"[bold yellow]{msg}[/]") if HAS_RICH else print(msg)
 
+
+def cmd_doctor() -> int:
+    """Print install/runtime checks. Returns 0 if no hard failures, 1 otherwise."""
+    script = Path(__file__).resolve()
+    rows: list[tuple[str, str, str]] = []
+    fails: list[bool] = [False]
+
+    def add(status: str, check: str, detail: str) -> None:
+        rows.append((status, check, detail))
+
+    def fail() -> None:
+        fails[0] = True
+
+    if sys.version_info >= (3, 8):
+        add("ok", "Python", f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}")
+    else:
+        add("fail", "Python", f"need 3.8+, got {sys.version_info}")
+        fail()
+
+    add("ok" if script.is_file() else "fail", "Script", str(script))
+    if not script.is_file():
+        fail()
+
+    if os.access(script, os.X_OK):
+        add("ok", "Executable bit", "+x on this file (good for direct exec)")
+    else:
+        add("warn", "Executable bit", "no +x — openbuddy-launcher uses python3; OK")
+
+    add("ok" if HAS_RICH else "warn", "rich", "installed" if HAS_RICH else "pip install rich (nicer panels)")
+
+    tmx = shutil.which("tmux")
+    add("ok" if tmx else "warn", "tmux", tmx or "not in PATH (no split-pane buddy)")
+
+    bash = shutil.which("bash")
+    add("ok" if bash else "warn", "bash", bash or "needed for openbuddy-wrap")
+
+    npx = shutil.which("npx")
+    add("ok" if npx else "warn", "npx / Node", npx or "optional (tokscale tokens/sync)")
+
+    try:
+        STATE_DIR.mkdir(parents=True, exist_ok=True)
+        probe = STATE_DIR / ".openbuddy_write_probe"
+        probe.write_text("ok", encoding="utf-8")
+        probe.unlink(missing_ok=True)
+        add("ok", "State directory", str(STATE_DIR))
+    except OSError as e:
+        add("fail", "State directory", f"{STATE_DIR} — {e}")
+        fail()
+
+    if CONFIG_FILE.is_file():
+        try:
+            json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
+            add("ok", "config.json", str(CONFIG_FILE))
+        except json.JSONDecodeError as e:
+            add("fail", "config.json", f"invalid JSON: {e}")
+            fail()
+    else:
+        add("info", "config.json", "optional (see docs/config.example.json)")
+
+    here = script.parent
+    for name in ("openbuddy-launcher", "openbuddy-wrap"):
+        p = here / name
+        add("ok" if p.is_file() else "warn", name, str(p) if p.is_file() else f"not next to openbuddy ({here})")
+
+    local_ob = Path.home() / ".local" / "bin" / "openbuddy"
+    if local_ob.is_file() or local_ob.is_symlink():
+        try:
+            same = local_ob.resolve() == script
+            add("ok" if same else "warn", "~/.local/bin/openbuddy", str(local_ob.resolve()))
+        except OSError:
+            add("warn", "~/.local/bin/openbuddy", str(local_ob))
+    else:
+        add("info", "~/.local/bin/openbuddy", "not found (optional PATH shim)")
+
+    if HAS_RICH:
+        tbl = Table(title="\u2726 openbuddy doctor \u2726", show_lines=False)
+        tbl.add_column(" ", style="dim", width=3)
+        tbl.add_column("Check", style="bold")
+        tbl.add_column("Detail")
+        icon = {"ok": "[green]\u2713[/]", "warn": "[yellow]![/]", "fail": "[red]\u2717[/]", "info": "[cyan]i[/]"}
+        for st, ck, det in rows:
+            tbl.add_row(icon.get(st, "?"), ck, det)
+        Console().print(Panel(tbl, border_style="bright_blue"))
+    else:
+        print("\n  \u2726 openbuddy doctor \u2726\n")
+        sym = {"ok": "[OK]", "warn": "[!!]", "fail": "[XX]", "info": "[--]"}
+        for st, ck, det in rows:
+            print(f"  {sym.get(st, '  ')}  {ck}: {det}")
+        print()
+
+    if fails[0]:
+        if HAS_RICH:
+            Console().print("[red]Some checks failed. Fix the items marked \u2717.[/]")
+        else:
+            print("Some checks failed (see [XX] above).")
+        return 1
+    if HAS_RICH:
+        Console().print("[dim]All required checks passed. Warnings are optional.[/]")
+    return 0
+
+
 def cmd_info(state: dict):
     stage  = get_stage_for_state(state)
     prog   = progress_points(state)
@@ -1805,6 +1906,7 @@ Commands:
   reset           Delete current buddy and start a new egg
   info            Show brief buddy info
   list            List all creature types
+  doctor, check   Environment diagnostics (Python, tmux, paths, optional deps)
 
 Progress = max(sessions, lifetime_tokens // 100000). Egg hatches at 3 sessions OR 250k tok (synced).
 Env: OPENBUDDY_AUTO_SYNC, TOKENS_PER_PROGRESS_UNIT, TOKENS_TO_HATCH.
@@ -1822,6 +1924,7 @@ Examples:
   openbuddy tokens --apply
   openbuddy sync
   openbuddy watch
+  openbuddy doctor
 """
 
 
@@ -1872,6 +1975,8 @@ def main():
     if cmd == "list":
         cmd_list()
         return
+    if cmd in ("doctor", "check"):
+        sys.exit(cmd_doctor())
 
     state = load_state()
 
