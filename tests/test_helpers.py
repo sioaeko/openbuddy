@@ -6,6 +6,7 @@ import os
 import unittest
 from importlib.machinery import SourceFileLoader
 from pathlib import Path
+from unittest.mock import patch
 
 
 def _load_openbuddy():
@@ -27,7 +28,13 @@ ob = _load_openbuddy()
 
 
 class TestWatchInterval(unittest.TestCase):
+    def setUp(self) -> None:
+        # Ignore real ~/.config/openbuddy/config.json in tests
+        self._cfg = patch.object(ob, "_user_config", return_value={})
+        self._cfg.start()
+
     def tearDown(self) -> None:
+        self._cfg.stop()
         os.environ.pop("OPENBUDDY_WATCH_INTERVAL", None)
 
     def test_default(self) -> None:
@@ -54,10 +61,26 @@ class TestWatchInterval(unittest.TestCase):
         os.environ["OPENBUDDY_WATCH_INTERVAL"] = "nope"
         self.assertEqual(ob._watch_interval_seconds(), 6.0)
 
+    def test_from_config(self) -> None:
+        with patch.object(ob, "_user_config", return_value={"watch_interval": 12}):
+            os.environ.pop("OPENBUDDY_WATCH_INTERVAL", None)
+            self.assertEqual(ob._watch_interval_seconds(), 12.0)
+
+    def test_env_overrides_config(self) -> None:
+        with patch.object(ob, "_user_config", return_value={"watch_interval": 99}):
+            os.environ["OPENBUDDY_WATCH_INTERVAL"] = "3"
+            self.assertEqual(ob._watch_interval_seconds(), 3.0)
+
 
 class TestCompactAndPanelWidth(unittest.TestCase):
+    def setUp(self) -> None:
+        self._cfg = patch.object(ob, "_user_config", return_value={})
+        self._cfg.start()
+
     def tearDown(self) -> None:
+        self._cfg.stop()
         os.environ.pop("OPENBUDDY_COMPACT", None)
+        os.environ.pop("OPENBUDDY_COMPACT_THRESHOLD", None)
 
     def test_compact_env_on(self) -> None:
         os.environ["OPENBUDDY_COMPACT"] = "1"
@@ -71,6 +94,19 @@ class TestCompactAndPanelWidth(unittest.TestCase):
         os.environ.pop("OPENBUDDY_COMPACT", None)
         self.assertTrue(ob._want_compact(40))
         self.assertFalse(ob._want_compact(50))
+
+    def test_compact_threshold_env(self) -> None:
+        os.environ.pop("OPENBUDDY_COMPACT", None)
+        os.environ["OPENBUDDY_COMPACT_THRESHOLD"] = "50"
+        self.assertTrue(ob._want_compact(40))
+        self.assertFalse(ob._want_compact(55))
+
+    def test_compact_threshold_from_config(self) -> None:
+        with patch.object(ob, "_user_config", return_value={"compact_auto_threshold": 40}):
+            os.environ.pop("OPENBUDDY_COMPACT", None)
+            os.environ.pop("OPENBUDDY_COMPACT_THRESHOLD", None)
+            self.assertTrue(ob._want_compact(35))
+            self.assertFalse(ob._want_compact(45))
 
     def test_panel_width_none(self) -> None:
         self.assertEqual(ob._panel_width(None), 38)

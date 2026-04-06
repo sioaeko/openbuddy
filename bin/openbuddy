@@ -34,6 +34,28 @@ except ImportError:
 
 STATE_DIR  = Path.home() / ".config" / "openbuddy"
 STATE_FILE = STATE_DIR / "state.json"
+CONFIG_FILE = STATE_DIR / "config.json"
+
+# Optional JSON next to state.json — env vars override these keys when set.
+_user_config_cache: Optional[dict] = None
+
+
+def _user_config() -> dict:
+    """~/.config/openbuddy/config.json — cached for process lifetime."""
+    global _user_config_cache
+    if _user_config_cache is not None:
+        return _user_config_cache
+    loaded: dict = {}
+    if CONFIG_FILE.is_file():
+        try:
+            data = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
+            if isinstance(data, dict):
+                loaded = data
+        except (json.JSONDecodeError, OSError):
+            pass
+    _user_config_cache = loaded
+    return _user_config_cache
+
 
 # Legacy migration paths
 LEGACY_PATHS = [
@@ -836,9 +858,7 @@ def _term_cols() -> int:
         return 80
 
 
-def _watch_interval_seconds() -> float:
-    """Seconds between watch refreshes (env OPENBUDDY_WATCH_INTERVAL, default 6)."""
-    raw = os.environ.get("OPENBUDDY_WATCH_INTERVAL", "6")
+def _parse_interval_seconds(raw: str) -> float:
     try:
         v = float(str(raw).strip())
     except (TypeError, ValueError):
@@ -850,6 +870,33 @@ def _watch_interval_seconds() -> float:
     return v
 
 
+def _watch_interval_seconds() -> float:
+    """Env OPENBUDDY_WATCH_INTERVAL, else config watch_interval, else 6."""
+    raw = os.environ.get("OPENBUDDY_WATCH_INTERVAL")
+    if raw is None or raw == "":
+        wc = _user_config().get("watch_interval")
+        raw = str(wc) if wc is not None else "6"
+    return _parse_interval_seconds(raw)
+
+
+def _compact_auto_threshold() -> int:
+    """Columns below this use compact layout (unless OPENBUDDY_COMPACT=0/1)."""
+    raw = os.environ.get("OPENBUDDY_COMPACT_THRESHOLD")
+    if raw is not None and raw != "":
+        try:
+            return max(20, min(200, int(raw)))
+        except ValueError:
+            pass
+    cfg = _user_config()
+    t = cfg.get("compact_auto_threshold")
+    if t is not None:
+        try:
+            return max(20, min(200, int(t)))
+        except (TypeError, ValueError):
+            pass
+    return 48
+
+
 def _want_compact(term_width: Optional[int]) -> bool:
     """Narrow tmux panes: skip stats/description and use shorter ASCII."""
     ev = os.environ.get("OPENBUDDY_COMPACT")
@@ -857,7 +904,8 @@ def _want_compact(term_width: Optional[int]) -> bool:
         return True
     if ev == "0":
         return False
-    return term_width is not None and term_width < 48
+    th = _compact_auto_threshold()
+    return term_width is not None and term_width < th
 
 
 def _panel_width(term_width: Optional[int]) -> int:
@@ -1760,8 +1808,9 @@ Commands:
 
 Progress = max(sessions, lifetime_tokens // 100000). Egg hatches at 3 sessions OR 250k tok (synced).
 Env: OPENBUDDY_AUTO_SYNC, TOKENS_PER_PROGRESS_UNIT, TOKENS_TO_HATCH.
-Wrapper/tmux: OPENBUDDY_TMUX_PCT (default 10), OPENBUDDY_TMUX_V_PCT (vertical split height; default 12 if unset), OPENBUDDY_TMUX_VERTICAL (buddy below tool), OPENBUDDY_COMPACT (narrow watch UI; auto if pane < 48 cols).
-Watch: OPENBUDDY_WATCH_INTERVAL (seconds between refreshes, default 6, clamp 0.5–3600).
+Wrapper/tmux: OPENBUDDY_TMUX_PCT (default 10), OPENBUDDY_TMUX_V_PCT (vertical split height; default 12 if unset), OPENBUDDY_TMUX_VERTICAL (buddy below tool), OPENBUDDY_COMPACT (narrow watch UI; auto if pane < threshold).
+Watch: OPENBUDDY_WATCH_INTERVAL (seconds; default 6; clamp 0.5–3600). OPENBUDDY_COMPACT_THRESHOLD (cols; default 48 or config).
+Config: ~/.config/openbuddy/config.json optional keys: watch_interval, compact_auto_threshold (env overrides).
 
 Examples:
   openbuddy

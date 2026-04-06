@@ -1,0 +1,10 @@
+[project]
+name = "openbuddy"
+version = "0.0.0"
+description = "Tamagotchi-style ASCII buddy for CLI coding tools"
+readme = "README.md"
+requires-python = ">=3.8"
+license = { text = "MIT" }
+
+[project.optional-dependencies]
+rich = ["rich>=13.7,<15"]

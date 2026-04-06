@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+"""Debug helper: raw stdin bytes → /tmp/openbuddy_sniffer.log (TTY debugging only)."""
 import sys
 import os
 import time

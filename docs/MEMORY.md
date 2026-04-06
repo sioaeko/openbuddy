@@ -28,6 +28,8 @@ Tamagotchi 스타일 ASCII 버디를 CLI 코딩 툴(Codex, Gemini, opencode 등)
 ## 상태 파일
 
 - `~/.config/openbuddy/state.json` — 세션 수, 크리처 종류, 부화 여부
+- `~/.config/openbuddy/config.json` (선택) — `watch_interval`, `compact_auto_threshold` 등; 환경 변수가 우선
+- `contrib/debug-sniffer.py` — 예전 `bin/sniffer` 디버그 스크립트 위치
 - 6종 크리처: debugrix/velocode/refactoron/nullbyte/wizardex/compilox
 - 스테이지: egg(0) → baby(3) → adult(12) → elder(30세션)
 
