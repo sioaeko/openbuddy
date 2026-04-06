@@ -6,6 +6,7 @@ State stored in ~/.config/openbuddy/state.json
 
 import json
 import os
+from typing import Optional
 import shlex
 import shutil
 import sys
@@ -828,6 +829,29 @@ def _codex_context_cost_line(state: dict) -> str:
 
 # ── Rendering ─────────────────────────────────────────────────────────────────
 
+def _term_cols() -> int:
+    try:
+        return max(20, os.get_terminal_size().columns)
+    except OSError:
+        return 80
+
+
+def _want_compact(term_width: Optional[int]) -> bool:
+    """Narrow tmux panes: skip stats/description and use shorter ASCII."""
+    ev = os.environ.get("OPENBUDDY_COMPACT")
+    if ev == "1":
+        return True
+    if ev == "0":
+        return False
+    return term_width is not None and term_width < 36
+
+
+def _panel_width(term_width: Optional[int]) -> int:
+    if term_width is None:
+        return 38
+    return max(22, min(38, term_width - 1))
+
+
 def stat_bar(value: int, width: int = 8) -> str:
     filled = round((value / 10) * width)
     return "\u2588" * filled + "\u2591" * (width - filled)
@@ -839,8 +863,9 @@ def _tool_summary(state: dict) -> str:
     parts = [f"{t}:{n}" for t, n in sorted(ts.items(), key=lambda x: -x[1])[:3]]
     return "  ".join(parts)
 
-def render_rich(state: dict, message: str = None):
+def render_rich(state: dict, message: str = None, term_width: Optional[int] = None):
     console = Console()
+    pw = _panel_width(term_width)
     sessions = state["sessions"]
     lt       = int(state.get("lifetime_tokens", 0) or 0)
     prog     = progress_points(state)
@@ -874,7 +899,7 @@ def render_rich(state: dict, message: str = None):
             content.append(f'\n  \U0001f4ac "{message}"', style="italic white")
         console.print(Panel(content,
             title="[bold white]\u2726 OPENBUDDY \u2726[/]",
-            border_style="white", width=38, padding=(0, 1)))
+            border_style="white", width=pw, padding=(0, 1)))
         return
 
     creature = CREATURES[state["creature"]]
@@ -918,17 +943,81 @@ def render_rich(state: dict, message: str = None):
 
     console.print(Panel(content,
         title=f"[bold {color}]\u2726 OPENBUDDY \u2726[/]",
-        border_style=color, width=38, padding=(0, 1)))
+        border_style=color, width=pw, padding=(0, 1)))
 
-def render_plain(state: dict, message: str = None):
+def render_rich_compact(state: dict, message: str = None, term_width: Optional[int] = None):
+    """Minimal panel for narrow tmux splits (space-efficient)."""
+    tw = term_width or 28
+    pw = max(18, min(32, tw - 1))
+    console = Console(width=tw)
+    sessions = state["sessions"]
+    lt = int(state.get("lifetime_tokens", 0) or 0)
+    prog = progress_points(state)
+    stage = get_stage_for_state(state)
+    is_egg = not state.get("hatched", False)
+
+    if is_egg:
+        creature_key = state["creature"]
+        egg_art = CREATURES[creature_key]["ascii"]["egg"]
+        content = Text()
+        content.append("  ???  EGG\n", style="bold dim white")
+        content.append(
+            f"  sess {sessions}/{EGG_HATCH_AT}  ·  tok {format_tokens(lt)}/{format_tokens(TOKENS_TO_HATCH)}\n",
+            style="dim white",
+        )
+        for line in egg_art[:2]:
+            content.append(f"  {line}\n", style="bold white")
+        if message:
+            content.append(f'\n  \U0001f4ac "{message}"', style="italic dim white")
+        console.print(Panel(content,
+            title="[bold white]\u2726 OB \u2726[/]",
+            border_style="white", width=pw, padding=(0, 0)))
+        return
+
+    creature = CREATURES[state["creature"]]
+    color = creature["color"]
+    ascii_art = creature["ascii"][stage]
+    rarity_colors = {"common": "white", "rare": "bright_cyan", "legendary": "bright_yellow"}
+    rarity_color = rarity_colors[creature["rarity"]]
+    stage_icons = {"egg": "\U0001f95a", "baby": "\U0001f423", "adult": "\u2728", "elder": "\U0001f451"}
+    next_at = get_next_stage_at(prog)
+    tool_str = _tool_summary(state)
+    tok_pts = lt // TOKENS_PER_PROGRESS_UNIT
+
+    content = Text()
+    content.append(f"  {creature['name']}", style=f"bold {color}")
+    content.append(f"  [{creature['rarity'].upper()}]\n", style=f"bold {rarity_color}")
+    content.append(f"  {stage_icons[stage]} {stage.upper()}", style="bold white")
+    content.append(f"  ·  prog {prog}", style="dim white")
+    if next_at:
+        content.append(f"  \u2192{next_at}", style="dim yellow")
+    content.append("\n", style="dim white")
+    content.append(
+        f"  sess {sessions}  ·  tok ~{tok_pts}  ·  {format_tokens(lt)}\n",
+        style="dim white",
+    )
+    if tool_str:
+        content.append(f"  \U0001f6e0  {tool_str}\n", style="dim white")
+    content.append("\n")
+    for line in ascii_art[:2]:
+        content.append(f"  {line}\n", style=f"bold {color}")
+    if message:
+        content.append(f'\n  \U0001f4ac "{message}"', style=f"italic {color}")
+
+    console.print(Panel(content,
+        title=f"[bold {color}]\u2726 OB \u2726[/]",
+        border_style=color, width=pw, padding=(0, 0)))
+
+def render_plain(state: dict, message: str = None, term_width: Optional[int] = None):
+    pw = _panel_width(term_width)
     sessions = state["sessions"]
     lt       = int(state.get("lifetime_tokens", 0) or 0)
     prog     = progress_points(state)
     stage    = get_stage_for_state(state)
     is_egg   = not state.get("hatched", False)
-    print("=" * 38)
+    print("=" * pw)
     print("  \u2726 OPENBUDDY \u2726")
-    print("=" * 38)
+    print("=" * pw)
     if is_egg:
         print(f"  Stage: EGG  sessions {sessions}/{EGG_HATCH_AT}  tok {lt}/{TOKENS_TO_HATCH}")
         print()
@@ -961,13 +1050,49 @@ def render_plain(state: dict, message: str = None):
         print(f"  END  {stat_bar(stats['endurance'])}  {stats['endurance']}/10")
     if message:
         print(f'\n  \U0001f4ac "{message}"')
-    print("=" * 38)
+    print("=" * pw)
 
-def render(state: dict, message: str = None):
-    if HAS_RICH:
-        render_rich(state, message)
+def render_plain_compact(state: dict, message: str = None, term_width: Optional[int] = None):
+    tw = term_width or 28
+    pw = max(18, min(32, tw - 1))
+    sessions = state["sessions"]
+    lt = int(state.get("lifetime_tokens", 0) or 0)
+    prog = progress_points(state)
+    stage = get_stage_for_state(state)
+    is_egg = not state.get("hatched", False)
+    print("=" * pw)
+    print("  \u2726 OB \u2726")
+    print("=" * pw)
+    if is_egg:
+        print(f"  EGG  sess {sessions}/{EGG_HATCH_AT}  tok {lt}/{TOKENS_TO_HATCH}")
+        for line in CREATURES[state["creature"]]["ascii"]["egg"][:2]:
+            print(f"  {line}")
     else:
-        render_plain(state, message)
+        creature = CREATURES[state["creature"]]
+        tok_pts = lt // TOKENS_PER_PROGRESS_UNIT
+        tool_str = _tool_summary(state)
+        print(f"  {creature['name']} [{creature['rarity'].upper()}]")
+        print(f"  {stage.upper()}  prog {prog}  sess {sessions}  tok ~{tok_pts}  {lt} tok")
+        if tool_str:
+            print(f"  Tools: {tool_str}")
+        for line in creature["ascii"][stage][:2]:
+            print(f"  {line}")
+    if message:
+        print(f'\n  \U0001f4ac "{message}"')
+    print("=" * pw)
+
+def render(state: dict, message: str = None, *, term_width: Optional[int] = None):
+    compact = _want_compact(term_width)
+    if HAS_RICH:
+        if compact:
+            render_rich_compact(state, message, term_width)
+        else:
+            render_rich(state, message, term_width)
+    else:
+        if compact:
+            render_plain_compact(state, message, term_width)
+        else:
+            render_plain(state, message, term_width)
 
 # ── Animations ────────────────────────────────────────────────────────────────
 
@@ -1082,10 +1207,10 @@ def cmd_session(state: dict, tool: str = "unknown", silent: bool = False, hook_m
         evolve_animation(state, new_stage)
 
     if not silent:
-        render(state, message=get_quote(state, working=True))
+        render(state, message=get_quote(state, working=True), term_width=_term_cols())
 
 def cmd_show(state: dict):
-    render(state, message=get_quote(state))
+    render(state, message=get_quote(state), term_width=_term_cols())
 
 def cmd_watch(state: dict):
     def _clear():
@@ -1112,7 +1237,7 @@ def cmd_watch(state: dict):
         while True:
             _clear()
             state = load_state()
-            render(state, message=get_quote(state))
+            render(state, message=get_quote(state), term_width=_term_cols())
             time.sleep(6)
     except KeyboardInterrupt:
         pass
@@ -1620,7 +1745,8 @@ Commands:
   list            List all creature types
 
 Progress = max(sessions, lifetime_tokens // 100000). Egg hatches at 3 sessions OR 250k tok (synced).
-Env: OPENBUDDY_AUTO_SYNC=1 (wrapper runs sync --quiet after each session), TOKENS_PER_PROGRESS_UNIT, TOKENS_TO_HATCH.
+Env: OPENBUDDY_AUTO_SYNC, TOKENS_PER_PROGRESS_UNIT, TOKENS_TO_HATCH.
+Wrapper/tmux: OPENBUDDY_TMUX_PCT (default 16), OPENBUDDY_TMUX_VERTICAL (buddy below tool), OPENBUDDY_COMPACT (narrow watch UI; auto if pane < 36 cols).
 
 Examples:
   openbuddy

@@ -24,7 +24,7 @@ if [[ -n "${TMUX:-}" ]]; then
         sleep 0.5
         # 이미 분할되지 않은 경우에만 분할
         if [[ $(tmux list-panes | wc -l) -eq 1 ]]; then
-            tmux split-window -h -b -d -l 31 "openbuddy watch" 2>/dev/null || true
+            tmux split-window -h -b -d -l "${OPENBUDDY_TMUX_COLS:-26}" "openbuddy watch" 2>/dev/null || true
             # 분할 후에도 다시 한번 포커스 차단
             tmux set-option -p focus-events off 2>/dev/null || true
         fi
