@@ -1274,6 +1274,7 @@ def cmd_session(state: dict, tool: str = "unknown", silent: bool = False, hook_m
     state["daily_log"] = daily
 
     save_state(state)
+    new_stage = get_stage_for_state(state)
 
     if not state.get("hatched") and egg_should_hatch(state):
         state["hatched"] = True
