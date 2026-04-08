@@ -897,15 +897,33 @@ def _compact_auto_threshold() -> int:
     return 48
 
 
+def _full_ui_mode() -> bool:
+    """Wide Tamagotchi panel (stats, full ASCII, description). Off by default to save space."""
+    e = os.environ.get("OPENBUDDY_FULL_UI")
+    if e == "1":
+        return True
+    if e == "0":
+        return False
+    cfg = _user_config().get("full_ui")
+    if isinstance(cfg, bool):
+        return cfg
+    if isinstance(cfg, str) and cfg.lower() in ("1", "true", "yes"):
+        return True
+    return False
+
+
 def _want_compact(term_width: Optional[int]) -> bool:
-    """Narrow tmux panes: skip stats/description and use shorter ASCII."""
+    """Compact = less lines (short ASCII, no stat bars). Default: always on unless FULL_UI mode."""
     ev = os.environ.get("OPENBUDDY_COMPACT")
     if ev == "1":
         return True
     if ev == "0":
         return False
     th = _compact_auto_threshold()
-    return term_width is not None and term_width < th
+    if _full_ui_mode():
+        return term_width is not None and term_width < th
+    # Space-saving default: compact in narrow tmux panes and on full-width terminals
+    return True
 
 
 def _panel_width(term_width: Optional[int]) -> int:
@@ -1910,9 +1928,10 @@ Commands:
 
 Progress = max(sessions, lifetime_tokens // 100000). Egg hatches at 3 sessions OR 250k tok (synced).
 Env: OPENBUDDY_AUTO_SYNC, TOKENS_PER_PROGRESS_UNIT, TOKENS_TO_HATCH.
-Wrapper/tmux: OPENBUDDY_TMUX_PCT (default 10), OPENBUDDY_TMUX_V_PCT (vertical split height; default 12 if unset), OPENBUDDY_TMUX_VERTICAL (buddy below tool), OPENBUDDY_COMPACT (narrow watch UI; auto if pane < threshold).
-Watch: OPENBUDDY_WATCH_INTERVAL (seconds; default 6; clamp 0.5–3600). OPENBUDDY_COMPACT_THRESHOLD (cols; default 48 or config).
-Config: ~/.config/openbuddy/config.json optional keys: watch_interval, compact_auto_threshold (env overrides).
+Wrapper/tmux: OPENBUDDY_TMUX_PCT (default 10), OPENBUDDY_TMUX_V_PCT (vertical split height; default 12 if unset), OPENBUDDY_TMUX_VERTICAL (buddy below tool), OPENBUDDY_COMPACT (force on/off).
+UI: Default is compact (space-saving). OPENBUDDY_FULL_UI=1 restores large panel when the terminal is wide (or set full_ui in config.json).
+Watch: OPENBUDDY_WATCH_INTERVAL (seconds; default 6; clamp 0.5–3600). OPENBUDDY_COMPACT_THRESHOLD (cols; used only with FULL_UI).
+Config: ~/.config/openbuddy/config.json optional keys: watch_interval, compact_auto_threshold, full_ui (env overrides).
 
 Examples:
   openbuddy

@@ -280,6 +280,10 @@ Re-apply after Gemini package upgrades if layout files were overwritten.
 | Optional | `tmux` (split-pane buddy in one terminal) |
 | Optional | Node + `npx tokscale` for `tokens` / `sync` (local tokscale data required) |
 
+### UI footprint
+
+By default **`show` / `watch` use a compact layout** (less vertical space, shorter ASCII). For the full panel with stats bars and full ASCII on a **wide** terminal, set **`OPENBUDDY_FULL_UI=1`** or add **`"full_ui": true`** to `~/.config/openbuddy/config.json`.
+
 ---
 
 ## Troubleshooting

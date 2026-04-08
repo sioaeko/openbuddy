@@ -81,6 +81,7 @@ class TestCompactAndPanelWidth(unittest.TestCase):
         self._cfg.stop()
         os.environ.pop("OPENBUDDY_COMPACT", None)
         os.environ.pop("OPENBUDDY_COMPACT_THRESHOLD", None)
+        os.environ.pop("OPENBUDDY_FULL_UI", None)
 
     def test_compact_env_on(self) -> None:
         os.environ["OPENBUDDY_COMPACT"] = "1"
@@ -90,21 +91,29 @@ class TestCompactAndPanelWidth(unittest.TestCase):
         os.environ["OPENBUDDY_COMPACT"] = "0"
         self.assertFalse(ob._want_compact(10))
 
-    def test_compact_by_width(self) -> None:
+    def test_default_space_saving_always_compact(self) -> None:
         os.environ.pop("OPENBUDDY_COMPACT", None)
+        os.environ.pop("OPENBUDDY_FULL_UI", None)
+        self.assertTrue(ob._want_compact(200))
+
+    def test_compact_by_width_full_ui_mode(self) -> None:
+        os.environ.pop("OPENBUDDY_COMPACT", None)
+        os.environ["OPENBUDDY_FULL_UI"] = "1"
         self.assertTrue(ob._want_compact(40))
         self.assertFalse(ob._want_compact(50))
 
-    def test_compact_threshold_env(self) -> None:
+    def test_compact_threshold_env_full_ui(self) -> None:
         os.environ.pop("OPENBUDDY_COMPACT", None)
+        os.environ["OPENBUDDY_FULL_UI"] = "1"
         os.environ["OPENBUDDY_COMPACT_THRESHOLD"] = "50"
         self.assertTrue(ob._want_compact(40))
         self.assertFalse(ob._want_compact(55))
 
-    def test_compact_threshold_from_config(self) -> None:
-        with patch.object(ob, "_user_config", return_value={"compact_auto_threshold": 40}):
+    def test_compact_threshold_from_config_full_ui(self) -> None:
+        with patch.object(ob, "_user_config", return_value={"compact_auto_threshold": 40, "full_ui": True}):
             os.environ.pop("OPENBUDDY_COMPACT", None)
             os.environ.pop("OPENBUDDY_COMPACT_THRESHOLD", None)
+            os.environ.pop("OPENBUDDY_FULL_UI", None)
             self.assertTrue(ob._want_compact(35))
             self.assertFalse(ob._want_compact(45))
 

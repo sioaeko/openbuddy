@@ -1,4 +1,5 @@
 {
   "watch_interval": 6,
-  "compact_auto_threshold": 48
+  "compact_auto_threshold": 48,
+  "full_ui": false
 }
