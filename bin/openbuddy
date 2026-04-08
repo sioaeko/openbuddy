@@ -1784,6 +1784,13 @@ def _codex_hook_system_message_line(ctx: str) -> str:
     return line
 
 
+def cmd_codex_launch_line() -> None:
+    """One plain line to stderr — used by codex-setup wrapper; Codex TUI often hides hook output."""
+    state = load_state()
+    ctx = format_codex_additional_context(state)
+    print(_codex_hook_system_message_line(ctx), file=sys.stderr)
+
+
 def cmd_codex_hook_session_start() -> None:
     """Codex SessionStart hook: JSON on stdout with additionalContext."""
     try:
@@ -2032,6 +2039,8 @@ def cmd_codex_setup(args: list[str]) -> None:
     real_s = shlex.quote(str(real))
     body = f"""#!/usr/bin/env bash
 # openbuddy: Codex hooks mode — no tmux. Regenerate: openbuddy codex-setup --write-wrapper
+# Codex TUI often hides SessionStart hook text; we print one line here and use --no-alt-screen
+# (see codex --help) so it stays in scrollback. Set OPENBUDDY_CODEX_USE_ALT_SCREEN=1 for fullscreen TUI.
 set -euo pipefail
 OPENBUDDY_BIN="${{OPENBUDDY_BIN:-$HOME/.local/bin/openbuddy}}"
 REAL_BIN={real_s}
@@ -2039,7 +2048,12 @@ REAL_BIN={real_s}
 [[ -z "${{OPENBUDDY_WRAPPED:-}}" ]] || exec "$REAL_BIN" "$@"
 export OPENBUDDY_WRAPPED=1
 "$OPENBUDDY_BIN" session codex --silent
-exec "$REAL_BIN" "$@"
+"$OPENBUDDY_BIN" codex-launch-line || true
+if [[ -z "${{OPENBUDDY_CODEX_USE_ALT_SCREEN:-}}" ]]; then
+  exec "$REAL_BIN" --no-alt-screen "$@"
+else
+  exec "$REAL_BIN" "$@"
+fi
 """
     dest.write_text(body, encoding="utf-8")
     try:
@@ -2066,6 +2080,7 @@ Commands:
   wrap-preset [ai] Run openbuddy-wrap --preset (gemini/재미나이, codex, opencode, … — needs bash / Git Bash)
   codex-install-hook   Add Codex SessionStart hook → buddy summary inside Codex (not a side panel)
   codex-setup          Codex hooks workflow: install hook; optional --write-wrapper (minimal codex shim, no tmux)
+  codex-launch-line          One-line buddy summary to stderr (used by codex-setup wrapper)
   codex-hook-session-start   For hooks.json only (reads stdin, prints SessionStart JSON)
   codex-hook-stop          Optional: +1 session each Codex turn (use instead of wrapper, not both)
   tokens          Today's token usage via tokscale (npx tokscale --today --json)
@@ -2137,6 +2152,9 @@ def main():
         return
     if cmd == "codex-setup":
         cmd_codex_setup(args[1:])
+        return
+    if cmd == "codex-launch-line":
+        cmd_codex_launch_line()
         return
     if cmd == "codex-hook-session-start":
         cmd_codex_hook_session_start()
