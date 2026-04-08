@@ -1934,7 +1934,7 @@ Commands:
 
 Progress = max(sessions, lifetime_tokens // 100000). Egg hatches at 3 sessions OR 250k tok (synced).
 Env: OPENBUDDY_AUTO_SYNC, TOKENS_PER_PROGRESS_UNIT, TOKENS_TO_HATCH.
-Wrapper/tmux: OPENBUDDY_TMUX_PCT (default 4%), OPENBUDDY_TMUX_V_PCT (vertical; default 5% if unset), OPENBUDDY_TMUX_VERTICAL, OPENBUDDY_COMPACT. Launcher: OPENBUDDY_TMUX_COLS (default 8 cells).
+Wrapper/tmux: OPENBUDDY_TMUX_PCT (default 9%), OPENBUDDY_TMUX_V_PCT (vertical; default 10% if unset), OPENBUDDY_TMUX_VERTICAL, OPENBUDDY_COMPACT. Launcher: OPENBUDDY_TMUX_COLS (default 16 cells).
 UI: Default is compact (space-saving). OPENBUDDY_FULL_UI=1 restores large panel when the terminal is wide (or set full_ui in config.json).
 Watch: OPENBUDDY_WATCH_INTERVAL (seconds; default 6; clamp 0.5–3600). OPENBUDDY_COMPACT_THRESHOLD (cols; used only with FULL_UI).
 Config: ~/.config/openbuddy/config.json optional keys: watch_interval, compact_auto_threshold, full_ui (env overrides).

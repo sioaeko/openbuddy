@@ -96,7 +96,7 @@ Sample state: `docs/state.json.example`
 | **Wrapper default (no tmux)** | Quiet while working; **one summary screen after** exit | Good for long REPL-style sessions |
 | **Legacy popup (Windows)** | Extra window | `OPENBUDDY_POPUP_WATCH=1` + `.cmd` wrapper path |
 | **Skip tmux split** | Even with tmux: run tool → exit → `show` only | `OPENBUDDY_NO_TMUX=1` |
-| **Pane width** | Right `watch` width | `OPENBUDDY_TMUX_PCT` (default 4%); launcher: `OPENBUDDY_TMUX_COLS` (default 8 columns) |
+| **Pane width** | Right `watch` width | `OPENBUDDY_TMUX_PCT` (default 9%); launcher: `OPENBUDDY_TMUX_COLS` (default 16 columns) |
 | **No pause after exit** | Skip “Press Enter” after `show` | `OPENBUDDY_NO_PAUSE_AFTER=1` or `CI` |
 
 #### Codex: inside the session (no side ASCII panel)
