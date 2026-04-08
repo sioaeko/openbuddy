@@ -110,6 +110,8 @@ openbuddy codex-install-hook
 # codex_hooks = true
 ```
 
+**Codex 방식(훅 + tmux 없음):** `openbuddy codex-setup`으로 안내를 보고, 필요하면 `openbuddy codex-setup --write-wrapper`로 `~/.local/bin/codex`에 얇은 래퍼를 깔아 실제 Codex 실행 전에 `openbuddy session codex --silent`가 돌게 할 수 있습니다. 바이너리 경로는 `OPENBUDDY_CODEX_REAL` 또는 `--codex-path`로 지정하세요.
+
 - 이 훅은 **표시만** 하고 세션 수는 올리지 않습니다. 실행 횟수는 `openbuddy-wrap codex` 등으로 유지하세요.  
 - **Stop**에 `codex-hook-stop`을 쓰면 턴마다 +1이 가능하지만 **래퍼와 동시에 쓰면 이중 카운트**됩니다.  
 

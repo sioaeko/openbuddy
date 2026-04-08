@@ -110,6 +110,8 @@ openbuddy codex-install-hook
 # codex_hooks = true
 ```
 
+**Codex-style (hook + no tmux):** run `openbuddy codex-setup` to print the same steps, then optionally `openbuddy codex-setup --write-wrapper` to install a tiny `~/.local/bin/codex` shim that runs `openbuddy session codex --silent` before the real Codex CLI (set `OPENBUDDY_CODEX_REAL` or `--codex-path` if the binary is not on `PATH`).
+
 - This hook **only displays** context; it does **not** increment session count. Keep counting with `openbuddy-wrap codex` (combine with `OPENBUDDY_NO_TMUX` if you dislike extra UI).  
 - Optional `Stop` → `codex-hook-stop` can +1 per turn but **double-counts** if you also use the PATH wrapper.  
 

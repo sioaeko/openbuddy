@@ -1906,7 +1906,127 @@ def _codex_install_hook_footer() -> None:
     else:
         print("\nAdd to ~/.codex/config.toml:\n[features]\ncodex_hooks = true\n")
     print("Note: Codex hooks may be disabled on Windows (OpenAI); WSL/macOS/Linux often work.")
-    print("This hook only SHOWS the buddy in-session; use openbuddy-wrap codex for +1 per launch.")
+    print(
+        "SessionStart only injects context; for +1 sessions without tmux use: "
+        "openbuddy codex-setup --write-wrapper"
+    )
+
+
+def _find_codex_real_binary() -> Optional[Path]:
+    """Resolve codex on PATH, skipping ~/.local/bin (often our wrapper)."""
+    local_bin = (Path.home() / ".local" / "bin").resolve()
+    for dir_path in os.environ.get("PATH", "").split(os.pathsep):
+        if not (dir_path or "").strip():
+            continue
+        try:
+            d = Path(dir_path).resolve()
+        except OSError:
+            continue
+        if d == local_bin:
+            continue
+        for name in ("codex", "codex.exe"):
+            p = Path(dir_path) / name
+            if not p.is_file():
+                continue
+            if IS_WINDOWS:
+                if p.suffix.lower() in (".exe", ".cmd") or os.access(p, os.X_OK):
+                    return p.resolve()
+            elif os.access(p, os.X_OK):
+                return p.resolve()
+    for fp in ("/usr/bin/codex", "/usr/local/bin/codex"):
+        p = Path(fp)
+        if p.is_file() and os.access(p, os.X_OK):
+            return p.resolve()
+    return None
+
+
+def cmd_codex_setup(args: list[str]) -> None:
+    """Install SessionStart hook + optionally write a minimal codex shim (no tmux / launcher)."""
+    write_wrapper = "--write-wrapper" in args or "-w" in args
+    real_override: Optional[Path] = None
+    i = 0
+    while i < len(args):
+        if args[i] == "--codex-path" and i + 1 < len(args):
+            real_override = Path(args[i + 1]).expanduser().resolve()
+            i += 2
+            continue
+        i += 1
+    if real_override is None:
+        e = os.environ.get("OPENBUDDY_CODEX_REAL")
+        if e:
+            real_override = Path(e).expanduser().resolve()
+
+    cmd_codex_install_hook()
+
+    if HAS_RICH:
+        Console().print(
+            "\n[bold cyan]Codex hooks mode[/] — buddy state is injected as [bold]additionalContext[/] "
+            "at session start (no tmux split).\n"
+        )
+    else:
+        print("\nCodex hooks mode: SessionStart → additionalContext in the model (no tmux).\n")
+
+    real: Optional[Path] = real_override
+    if real is not None and not real.is_file():
+        print(f"Not a file: {real}", file=sys.stderr)
+        sys.exit(1)
+    if real is None:
+        real = _find_codex_real_binary()
+    if real is None:
+        if write_wrapper:
+            print(
+                "Could not find a real codex binary (skipped ~/.local/bin). "
+                "Set OPENBUDDY_CODEX_REAL or use: openbuddy codex-setup --write-wrapper --codex-path /path/to/codex",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        print(
+            "\n(Optional) Could not detect codex outside ~/.local/bin — "
+            "when you want a minimal wrapper, run with --write-wrapper --codex-path …\n"
+        )
+        return
+
+    print(f"Real codex binary: {real}")
+
+    if not write_wrapper:
+        print("\nTo also count sessions without tmux, run:")
+        print("  openbuddy codex-setup --write-wrapper")
+        print("(backs up ~/.local/bin/codex if present)\n")
+        return
+
+    dest = Path.home() / ".local" / "bin" / "codex"
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    if dest.exists() or dest.is_symlink():
+        bak = dest.with_name(f"codex.bak.{int(time.time())}.openbuddy")
+        try:
+            shutil.move(str(dest), str(bak))
+            print(f"Backed up previous {dest} → {bak}")
+        except OSError as e:
+            print(f"Could not back up {dest}: {e}", file=sys.stderr)
+            sys.exit(1)
+
+    real_s = shlex.quote(str(real))
+    body = f"""#!/usr/bin/env bash
+# openbuddy: Codex hooks mode — no tmux. Regenerate: openbuddy codex-setup --write-wrapper
+set -euo pipefail
+OPENBUDDY_BIN="${{OPENBUDDY_BIN:-$HOME/.local/bin/openbuddy}}"
+REAL_BIN={real_s}
+[[ -x "$OPENBUDDY_BIN" ]] || exec "$REAL_BIN" "$@"
+[[ -z "${{OPENBUDDY_WRAPPED:-}}" ]] || exec "$REAL_BIN" "$@"
+export OPENBUDDY_WRAPPED=1
+"$OPENBUDDY_BIN" session codex --silent
+exec "$REAL_BIN" "$@"
+"""
+    dest.write_text(body, encoding="utf-8")
+    try:
+        dest.chmod(dest.stat().st_mode | 0o111)
+    except OSError:
+        pass
+    print(f"Wrote minimal wrapper: {dest}")
+    if HAS_RICH:
+        Console().print("[dim]Ensure ~/.local/bin is first on PATH. Run codex in a terminal with hooks enabled.[/]")
+    else:
+        print("Ensure ~/.local/bin is first on PATH.")
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
@@ -1921,6 +2041,7 @@ Commands:
   stats           Show session statistics dashboard
   wrap-preset [ai] Run openbuddy-wrap --preset (gemini/재미나이, codex, opencode, … — needs bash / Git Bash)
   codex-install-hook   Add Codex SessionStart hook → buddy summary inside Codex (not a side panel)
+  codex-setup          Codex hooks workflow: install hook; optional --write-wrapper (minimal codex shim, no tmux)
   codex-hook-session-start   For hooks.json only (reads stdin, prints SessionStart JSON)
   codex-hook-stop          Optional: +1 session each Codex turn (use instead of wrapper, not both)
   tokens          Today's token usage via tokscale (npx tokscale --today --json)
@@ -1942,6 +2063,8 @@ Config: ~/.config/openbuddy/config.json optional keys: watch_interval, compact_a
 Examples:
   openbuddy
   openbuddy codex-install-hook
+  openbuddy codex-setup
+  openbuddy codex-setup --write-wrapper
   openbuddy wrap-preset
   openbuddy session codex
   openbuddy stats
@@ -1987,6 +2110,9 @@ def main():
         return
     if cmd == "codex-install-hook":
         cmd_codex_install_hook()
+        return
+    if cmd == "codex-setup":
+        cmd_codex_setup(args[1:])
         return
     if cmd == "codex-hook-session-start":
         cmd_codex_hook_session_start()
