@@ -96,7 +96,7 @@ flowchart LR
 | **래퍼 기본(비 tmux)** | 작업 중 방해 없음, **끝난 뒤** 한 화면 요약 | 장시간 CLI 작업 후 정리용 |
 | **보조 창(Windows)** | 예전 방식 | `OPENBUDDY_POPUP_WATCH=1` + `.cmd` 래퍼 |
 | **tmux 분할 끄기** | tmux가 있어도 “실행 → 종료 후 show”만 | `OPENBUDDY_NO_TMUX=1` |
-| **패인 너비** | 우측 `watch` 폭 | `OPENBUDDY_TMUX_PCT=22` (퍼센트) |
+| **패인 너비** | 우측 `watch` 폭 | `OPENBUDDY_TMUX_PCT` (기본 6%); 런처: `OPENBUDDY_TMUX_COLS` (기본 12칸) |
 | **종료 후 Enter 생략** | `show` 직후 대기 없음 | `OPENBUDDY_NO_PAUSE_AFTER=1` 또는 `CI` |
 
 #### Codex: 별도 창 대신 “흐름 안”에 넣기

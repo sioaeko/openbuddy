@@ -125,6 +125,15 @@ class TestCompactAndPanelWidth(unittest.TestCase):
         self.assertEqual(ob._panel_width(30), 29)
 
 
+class TestTermCols(unittest.TestCase):
+    def tearDown(self) -> None:
+        os.environ.pop("COLUMNS", None)
+
+    def test_columns_env_overrides(self) -> None:
+        with patch.dict(os.environ, {"COLUMNS": "14"}):
+            self.assertEqual(ob._term_cols(), 14)
+
+
 class TestDoctor(unittest.TestCase):
     def test_doctor_returns_int(self) -> None:
         rc = ob.cmd_doctor()

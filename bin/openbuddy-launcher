@@ -29,7 +29,7 @@ if [[ -n "${TMUX:-}" ]]; then
         # 이미 분할되지 않은 경우에만 분할
         if [[ $(tmux list-panes | wc -l) -eq 1 ]]; then
             if [[ -f "$OB" && -n "$PY3" ]]; then
-                if ! tmux split-window -h -b -d -l "${OPENBUDDY_TMUX_COLS:-20}" -- "$PY3" "$OB" watch 2>>"$LOG_FILE"; then
+                if ! tmux split-window -h -b -d -l "${OPENBUDDY_TMUX_COLS:-12}" -- "$PY3" "$OB" watch 2>>"$LOG_FILE"; then
                     echo "[openbuddy-launcher] tmux split-window failed (see $LOG_FILE)" >>"$LOG_FILE"
                 fi
             else

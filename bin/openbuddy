@@ -852,8 +852,12 @@ def _codex_context_cost_line(state: dict) -> str:
 # ── Rendering ─────────────────────────────────────────────────────────────────
 
 def _term_cols() -> int:
+    """Prefer COLUMNS (set by tmux/bash per pane) over ioctl — avoids full-screen width in a narrow split."""
+    raw = os.environ.get("COLUMNS")
+    if raw is not None and str(raw).strip().isdigit():
+        return max(10, min(4096, int(str(raw).strip())))
     try:
-        return max(20, os.get_terminal_size().columns)
+        return max(10, os.get_terminal_size().columns)
     except OSError:
         return 80
 
@@ -1028,8 +1032,10 @@ def render_rich(state: dict, message: str = None, term_width: Optional[int] = No
 def render_rich_compact(state: dict, message: str = None, term_width: Optional[int] = None):
     """Minimal panel for narrow tmux splits (space-efficient)."""
     tw = term_width or 28
-    pw = max(16, min(28, tw - 1))
-    console = Console(width=tw)
+    # Cap width so a mistaken huge ioctl width does not inflate the panel
+    tw = min(tw, 48)
+    pw = max(12, min(22, tw - 1))
+    console = Console(width=pw)
     sessions = state["sessions"]
     lt = int(state.get("lifetime_tokens", 0) or 0)
     prog = progress_points(state)
@@ -1133,8 +1139,8 @@ def render_plain(state: dict, message: str = None, term_width: Optional[int] = N
     print("=" * pw)
 
 def render_plain_compact(state: dict, message: str = None, term_width: Optional[int] = None):
-    tw = term_width or 28
-    pw = max(16, min(28, tw - 1))
+    tw = min(term_width or 28, 48)
+    pw = max(12, min(22, tw - 1))
     sessions = state["sessions"]
     lt = int(state.get("lifetime_tokens", 0) or 0)
     prog = progress_points(state)
@@ -1928,7 +1934,7 @@ Commands:
 
 Progress = max(sessions, lifetime_tokens // 100000). Egg hatches at 3 sessions OR 250k tok (synced).
 Env: OPENBUDDY_AUTO_SYNC, TOKENS_PER_PROGRESS_UNIT, TOKENS_TO_HATCH.
-Wrapper/tmux: OPENBUDDY_TMUX_PCT (default 10), OPENBUDDY_TMUX_V_PCT (vertical split height; default 12 if unset), OPENBUDDY_TMUX_VERTICAL (buddy below tool), OPENBUDDY_COMPACT (force on/off).
+Wrapper/tmux: OPENBUDDY_TMUX_PCT (default 6%), OPENBUDDY_TMUX_V_PCT (vertical; default 8% if unset), OPENBUDDY_TMUX_VERTICAL, OPENBUDDY_COMPACT. Launcher: OPENBUDDY_TMUX_COLS (default 12 cells).
 UI: Default is compact (space-saving). OPENBUDDY_FULL_UI=1 restores large panel when the terminal is wide (or set full_ui in config.json).
 Watch: OPENBUDDY_WATCH_INTERVAL (seconds; default 6; clamp 0.5–3600). OPENBUDDY_COMPACT_THRESHOLD (cols; used only with FULL_UI).
 Config: ~/.config/openbuddy/config.json optional keys: watch_interval, compact_auto_threshold, full_ui (env overrides).

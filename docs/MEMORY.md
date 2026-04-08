@@ -41,6 +41,8 @@ Gemini 업그레이드 시 `sudo bash openbuddy-patch.sh` 재실행 필요.
 
 ## 미해결 문제 (2026-04-01 기준)
 
+**터미널 폭 감지:** `watch`는 `os.get_terminal_size()`가 **전체 터미널** 폭을 줄 때가 있어 패널이 과하게 넓어 보일 수 있음 → **`COLUMNS` 환경 변수**를 우선 사용 (tmux/셸이 패인별로 설정).
+
 **Codex / OpenCode에서 버디 패인이 안 뜨는 경우:**
 - `bin/openbuddy`가 **실행 비트 없이(644)** 체크아웃되면 `tmux split-window … openbuddy watch`가 즉시 실패 → Git에서 **100755**로 두고, 런처는 `python3 /path/to/openbuddy watch`로 실행.
 - 예전: PATH만 문제였을 때는 절대 경로로 `openbuddy` 호출하도록 했음.
