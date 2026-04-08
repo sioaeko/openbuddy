@@ -101,6 +101,7 @@ set -euo pipefail
 
 OPENBUDDY_BIN="$OPENBUDDY"
 REAL_BIN="$real_bin"
+LAUNCHER_BIN="$LOCAL_BIN/openbuddy-launcher"
 
 # Wait so the post-tool buddy panel is readable (skip in CI or if OPENBUDDY_NO_PAUSE_AFTER=1)
 _ob_prompt_after_show() {
@@ -113,7 +114,28 @@ _ob_prompt_after_show() {
 if [[ -x "\$OPENBUDDY_BIN" && -z "\${OPENBUDDY_WRAPPED:-}" ]]; then
     export OPENBUDDY_WRAPPED=1
 
-    if [[ -n "\${TMUX:-}" ]]; then
+    # Prefer openbuddy-launcher: delayed split, cell width (OPENBUDDY_TMUX_COLS), focus/TTY fixes.
+    # Skip if launcher missing, OPENBUDDY_NO_LAUNCHER=1, or vertical strip (launcher is horizontal-only).
+    if [[ -x "\${LAUNCHER_BIN:-}" ]] && [[ -z "\${OPENBUDDY_NO_LAUNCHER:-}" ]] && [[ -z "\${OPENBUDDY_TMUX_VERTICAL:-}" ]]; then
+        "\$OPENBUDDY_BIN" session "$tool" --silent 2>/dev/null || true
+        [[ -n "\${OPENBUDDY_AUTO_SYNC:-}" ]] && "\$OPENBUDDY_BIN" sync --quiet 2>/dev/null &
+        if [[ -n "\${TMUX:-}" ]] && [[ -z "\${OPENBUDDY_NO_TMUX:-}" ]]; then
+            exec "\$LAUNCHER_BIN" "$tool" "\$REAL_BIN" "\$@"
+        elif command -v tmux &>/dev/null && [[ -z "\${OPENBUDDY_NO_TMUX:-}" ]]; then
+            _sess="openbuddy-\$\$"
+            _cols="\$(tput cols 2>/dev/null || echo 120)"
+            _lines="\$(tput lines 2>/dev/null || echo 40)"
+            tmux new-session -d -s "\$_sess" -x "\$_cols" -y "\$_lines" "\$LAUNCHER_BIN" "$tool" "\$REAL_BIN" "\$@"
+            exec tmux attach-session -t "\$_sess"
+        else
+            "\$REAL_BIN" "\$@"
+            _exit=\$?
+            "\$OPENBUDDY_BIN" show 2>/dev/null || true
+            _ob_prompt_after_show
+            exit \$_exit
+        fi
+
+    elif [[ -n "\${TMUX:-}" ]]; then
         # Already in tmux: split a buddy pane if nothing here is already running openbuddy watch
         _ob_skip=0
         for _ob_pid in \$(tmux list-panes -F '#{pane_pid}' 2>/dev/null); do
